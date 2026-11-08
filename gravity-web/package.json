@@ -1,0 +1,17 @@
+{
+  "name": "gravity-web",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "GRAVITY - real-physics space slingshot game for the browser",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build && node tools/inline-build.mjs",
+    "preview": "vite preview --host --port 4174",
+    "levels": "node tools/generate-levels.mjs",
+    "test": "node tools/playtest.mjs"
+  },
+  "devDependencies": {
+    "vite": "5.4.11"
+  }
+}
