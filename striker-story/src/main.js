@@ -31,22 +31,35 @@ const app = {
     flow.start();
     ui.showMatch(flow);
   },
-  startTraining() {
+  startTraining(drill = 'shooting') {
     if (!career.doActivity('train')) return;
     this.mode = 'training';
-    this.training = { shot: 0, of: 5, hits: 0, seed: career.d.seed + career.d.week * 7 + Math.floor(Math.random() * 1e6) };
+    this.training = { drill, shot: 0, of: drill === 'shooting' ? 5 : 3, hits: 0, seed: career.d.seed + career.d.week * 7 + Math.floor(Math.random() * 1e6) };
+    ui.showTraining(this.training);
+    this._nextTrainingShot();
+  },
+  startTeamNight() {
+    if (!career.doActivity('team')) return;
+    this.mode = 'training';
+    this.training = { shot: 0, of: 3, hits: 0, team: true, seed: career.d.seed + career.d.week * 11 + Math.floor(Math.random() * 1e6) };
     ui.showTraining(this.training);
     this._nextTrainingShot();
   },
   _nextTrainingShot() {
     const t = this.training;
     ui.flow = null;
-    play.start('training', t.seed + t.shot * 31, { keeper: 1, defence: 1 }, ui.momentCtx());
-    if (t.shot === 0) ui.momentStart(true);
+    const type = t.team ? 'crossbar' : { shooting: 'training', dribble: 'takeon', passing: 'buildup' }[t.drill];
+    play.start(type, t.seed + t.shot * 31, { keeper: 0.9, defence: 0.9 }, ui.momentCtx());
+    if (t.drill === 'passing' && play.m.pressure != null) play.m.pressure += 3;
+    ui.mhud?.remove(); ui.momentStart(true);
     play.onResult = () => {
       t.shot++;
       ui.updateTraining(t);
-      if (t.shot >= t.of) { const sp = career.trainingReward(t.hits); this.mode = 'hub'; ui.mhud?.remove(); ui.trainingDone(t.hits, sp); }
+      if (t.shot >= t.of) {
+        this.mode = 'hub'; ui.mhud?.remove(); this.training = null;
+        if (t.team) ui.teamNightDone(t.hits, career.teamNightReward(t.hits));
+        else ui.trainingDone(t.hits, career.trainingReward(t.hits));
+      }
       else this._nextTrainingShot();
     };
   },
@@ -55,7 +68,11 @@ const app = {
 const ui = new UI(document.getElementById('ui'), { career, audio, app });
 play.onEvent = (type) => {
   if (type === 'goal' && app.mode === 'match') ui.banner('GOAL!');
+  if (type === 'replay') ui.replayLabel(true);
+  if (type === 'replayend') ui.replayLabel(false);
+  if (app.mode === 'match') app.flow?.onMomentEvent?.(type);
   if (type === 'target' && app.training) { app.training.hits++; ui.updateTraining(app.training); }
+  if (app.training && !app.training.team && ((type === 'skill' && app.training.drill === 'dribble') || (type === 'received' && app.training.drill === 'passing'))) { app.training.hits++; ui.updateTraining(app.training); }
 };
 
 function resize() {
@@ -74,7 +91,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (play.down(e.clientX, e.clientY)) { pid = e.pointerId; try { canvas.setPointerCapture(pid); } catch (_) { /* */ } }
 });
 canvas.addEventListener('pointermove', (e) => { if (e.pointerId === pid) play.move(e.clientX, e.clientY); });
-canvas.addEventListener('pointerup', (e) => { if (e.pointerId !== pid) return; pid = null; play.up(); });
+canvas.addEventListener("pointerup", (e) => { if (e.pointerId !== pid) return; pid = null; play.up(e.clientX, e.clientY); });
 canvas.addEventListener('pointercancel', (e) => { if (e.pointerId !== pid) return; pid = null; play.aim = null; audio.chargeStop(); });
 document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 for (const ev of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(ev, () => audio.unlock(), { capture: true, passive: true });

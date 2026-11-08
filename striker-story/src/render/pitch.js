@@ -73,6 +73,8 @@ export class PitchRenderer {
     this.cam.top = w.top; this.cam.availH = w.availH;
   }
 
+  setCam(C, T, F) { this.cam = { ...this.cam, C: [...C], T: [...T], F }; this.want = { ...this.want, C: [...C], T: [...T], F }; }
+
   // world (x, y = depth toward own half, z = height) -> screen; also returns px per metre at that depth
   P(x, y, z = 0, fx) {
     const c = this.cam;

@@ -1,4 +1,4 @@
-# STRIKER STORY — Çek-bırak futbol kariyer oyunu (MVP 0.1)
+# STRIKER STORY — Çek-bırak futbol kariyer oyunu (0.2)
 
 Tek bir oyuncunun kariyeri: 17 yaşında County League'de başla, Elite League'e yüksel.
 Maçlar senin dahil olduğun **anlar** olarak oynanır; aradaki her şeyi yorum akışı anlatır.
@@ -17,6 +17,8 @@ npm run build      # dist/striker.html — tek dosyalık oyun
 - Çekerken parmağını **kavisli** hareket ettir = falso. Parmağının çizdiği eğri 180° döndürülmüş haliyle topun kavisi olur.
 - **CHIP** düğmesi = aşırtma (kaleci önde ya da baraj üstünden).
 - Açık oyunda süre sınırı var (topun etrafındaki halka): savunma kapanmadan karar ver.
+- **Çalım anı:** savunmacı yaklaşırken oklar yeşile dönünce sola/sağa kaydır.
+- Gol sonrası kale arkasından tekrar (dokun = geç).
 - Takım arkadaşına pas atabilirsin; ilişkin iyiyse topu sana geri verir (verkaç), değilse kendisi vurur (asist).
 
 ## Kariyer (New Star Soccer'dan esinlenen döngü)
@@ -28,7 +30,16 @@ npm run build      # dist/striker.html — tek dosyalık oyun
 | Beceriler | Şut (nişan konisi), Güç (top hızı), Falso (kavis), Vizyon (tahmin çizgisi uzunluğu), Soğukkanlılık (karar süresi) |
 | Para ve mağaza | Enerji içeceği, krampon (+falso / +isabet), kişisel antrenör, ev / araba (haftalık enerji, mutluluk) |
 | Lig | 8 kulüp, 14 maçlık sezon, puan tablosu, gol krallığı, şampiyonlukta üst lige çıkış |
-| Transfer | İyi form → üst lig kulüplerinden teklif; sezon sonunda geçersin |
+| Transfer | İyi form → üst lig kulüplerinden teklif; "+%20 iste" ile pazarlık, menajerle imza primi |
+| Kupa | Her sezon 3 tur (çeyrek final, yarı final, final); berabere biterse belirleyici penaltıyı sen atarsın |
+| Milli takım | İyi formla milli davet; milli maçta gol = büyük taraftar artışı |
+| Sponsorlar | Ünün arttıkça haftalık ödeme teklifi; etkinliklere gitmezsen sözleşme biter |
+| Sevgili | Randevu geceleri ilişkiyi besler; mutluluk toparlanmayı hızlandırır |
+| Haftalık olaylar | Basın toplantısı, gece dışarı çıkma, hastane ziyareti, TV röportajı... her seçim enerji / taraftar / hoca / takım dengesini değiştirir |
+| Sakatlık | Enerjin çok düşükken maça çıkarsan 2–3 hafta sakat kalırsın (tribünden izlersin) |
+| Antrenman | Şut (hedefler), Çalım (zamanlı kaydırma), Pas (koşucuya pas) driller; takım gecesinde üst direk yarışması |
+| Ödüller | Maçın Oyuncusu, Ayın Oyuncusu, Gol Kralı, Yılın Oyuncusu, kupa madalyaları |
+| Kariyer sonu | 30'dan sonra yaşlanma, 36'da emeklilik, kariyer mirası puanı |
 
 ## Gerçekçi top fiziği (`src/sim/ball.js`)
 - Hava direnci gerçek top değeriyle: 0,5·ρ·Cd·A/m ≈ 0,013 1/m

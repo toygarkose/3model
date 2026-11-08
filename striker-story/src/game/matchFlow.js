@@ -14,7 +14,11 @@ export class MatchFlow {
     const r = rng(seed);
     this.r = r;
     this.fx = fx;
-    const me = c.club, opp = fx.opp;
+    const me = fx.special === 'intl' ? { name: d.nation, short: d.nation.replace(/\s/g, '').slice(0, 3).toUpperCase(), colors: ['#e4443a', '#ffffff'], str: 80 } : c.club;
+    const opp = fx.opp;
+    this.me = me;
+    this.special = fx.special || null;
+    this.label = fx.label || null;
     const ourStr = me.str + (fx.home ? 3 : 0), oppStr = opp.str + (fx.home ? 0 : 3);
     const [gu, gt] = simScore(ourStr, oppStr, r);
     const plan = c.matchPlan(seed + 1);
@@ -34,13 +38,15 @@ export class MatchFlow {
     this.score = [0, 0];
     this.rating = 6.0;
     this.myGoals = 0; this.myAssists = 0;
+    this.st = { chances: 0, onTarget: 0, passes: 0, keyPasses: 0 };
+    this.shootout = null;
     this.feed = [];
     this.state = 'ticker';
     this.paused = false;
     const q = (s) => 0.78 + Math.max(0, Math.min(1, (s - 40) / 55)) * 0.47;
     this.oppQ = { keeper: q(oppStr), defence: q(oppStr) * 0.95 + 0.05 };
     this.home = fx.home;
-    this._say(0, plan.starts ? `Kick-off! ${d.name} starts up front for ${me.name}.` : `${d.name} starts on the bench. Impress when you get your chance.`);
+    this._say(0, this.label ? `${this.label}. ${me.name} against ${opp.name}.` : plan.starts ? `Kick-off! ${d.name} starts up front for ${me.name}.` : `${d.name} starts on the bench. Impress when you get your chance.`);
     if (!plan.starts) this.events.push({ min: plan.subOn, kind: 'sub' }), this.events.sort((a, b) => a.min - b.min);
     this.audio.crowd(0.5);
     this.audio.play('whistle', { vol: 0.6 });
@@ -56,7 +62,7 @@ export class MatchFlow {
     this.minute = Math.min(90, this.minute + dt * speed);
     while (this.events.length && this.events[0].min <= this.minute) {
       const e = this.events.shift();
-      if (e.kind === 'us') { this.score[this.usIdx]++; this._say(e.min, `GOAL! ${e.who} scores for ${this.career.club.name}.`, 'good'); this.audio.play('roar', { vol: 0.7 }); this.rating += 0.1; }
+      if (e.kind === 'us') { this.score[this.usIdx]++; this._say(e.min, `GOAL! ${e.who} scores for ${this.me.name}.`, 'good'); this.audio.play('roar', { vol: 0.7 }); this.rating += 0.1; }
       else if (e.kind === 'them') { this.score[1 - this.usIdx]++; this._say(e.min, `${this.fx.opp.name} score through ${e.who}.`, 'bad'); this.audio.play('ooh', { vol: 0.6 }); }
       else if (e.kind === 'sub') { this._say(e.min, `${this.career.d.name} comes off the bench!`); }
       else if (e.kind === 'moment') { this._moment(e); return; }
@@ -71,15 +77,19 @@ export class MatchFlow {
     this.current = e;
     this.minute = e.min;
     this.audio.crowd(0.85);
-    this.ui.momentIntro(e.min, MOMENT_LABEL[e.type], e.type, () => {
-      this.ui.momentStart?.();
+    this.ui.momentIntro(e.min, e.decider ? 'Decisive penalty' : MOMENT_LABEL[e.type], e.type, () => {
       this.play.start(e.type, e.seed, this.oppQ, this.ui.momentCtx());
+      this.ui.momentStart?.();
       this.play.onResult = (res) => this._momentDone(res);
     });
   }
 
   _momentDone(res) {
     const k = res?.kind || 'lost';
+    if (this.current.decider) return this._deciderDone(res);
+    this.st.chances++;
+    if (res?.shooter === 'you' && ['goal', 'saved', 'post'].includes(k)) this.st.onTarget++;
+    if (res?.shooter === 'mate' && k !== 'goal') { this.st.keyPasses++; this.rating += 0.3; }
     let key = k;
     if (k === 'goal' && res.shooter === 'mate') key = 'assist';
     if (k === 'goal' && res.shooter === 'you') {
@@ -111,14 +121,35 @@ export class MatchFlow {
     return `GOAL! ${n} finishes it!`;
   }
 
-  _end() {
+  // Passing stats come from moment events.
+  onMomentEvent(type) {
+    if (type === 'received') { this.st.passes++; this.rating += 0.12; }
+  }
+
+  _deciderDone(res) {
+    this.shootout = res?.kind === 'goal';
+    this._say(120, this.shootout ? `${this.career.d.name} scores the decisive penalty! ${this.me.name} go through!` : `${this.career.d.name} misses the decisive penalty...`, this.shootout ? 'good' : 'bad');
+    this.rating += this.shootout ? 0.6 : -0.4;
+    this.state = 'ticker';
+    this.ui.momentEnd?.(this, res);
+    this._end(true);
+  }
+
+  _end(afterShootout = false) {
+    const us0 = this.score[this.usIdx], them0 = this.score[1 - this.usIdx];
+    // cup draw: you take the decisive penalty
+    if (!afterShootout && this.special === 'cup' && us0 === them0) {
+      this._say(90, 'Level after extra time. It goes to penalties — and it comes down to you.');
+      this._moment({ min: 120, kind: 'moment', type: 'penalty', seed: Math.floor(this.r() * 1e9), decider: true });
+      return;
+    }
     this.state = 'over';
     const us = this.score[this.usIdx], them = this.score[1 - this.usIdx];
     if (us > them) this.rating += 0.3; else if (us < them) this.rating -= 0.2;
     this.rating = Math.round(Math.max(3, Math.min(10, this.rating)) * 10) / 10;
     this.audio.play('whistle3', { vol: 0.7 });
     this.audio.crowd(0.25);
-    const res = this.career.finishMatch({ ourGoals: us, theirGoals: them, myGoals: this.myGoals, myAssists: this.myAssists, rating: this.rating });
+    const res = this.career.finishMatch({ ourGoals: us, theirGoals: them, myGoals: this.myGoals, myAssists: this.myAssists, rating: this.rating, shootout: this.shootout, stats: this.st });
     this.ui.matchOver(this, res);
   }
 }

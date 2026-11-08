@@ -7,9 +7,10 @@ export function rng(seed) {
   return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-const TYPES = ['open', 'freekick', 'penalty', 'oneonone'];
+const TYPES = ['open', 'freekick', 'penalty', 'oneonone', 'takeon', 'buildup'];
 export const MOMENT_LABEL = {
   open: 'On the edge of the box', freekick: 'Free kick', penalty: 'Penalty!', oneonone: 'Through on goal', training: 'Training',
+  takeon: 'One defender to beat', buildup: 'Build the attack', crossbar: 'Crossbar challenge',
 };
 
 function keeperSet(ball) {
@@ -37,12 +38,15 @@ export function createMoment(type, seed, opp = { keeper: 1, defence: 1 }) {
   else if (type === 'freekick') { bx = rnd(-13, 13); by = rnd(17, 27); }
   else if (type === 'oneonone') { bx = rnd(-7, 7); by = rnd(15, 21); }
   else if (type === 'training') { bx = rnd(-9, 9); by = rnd(18, 24); }
+  else if (type === 'crossbar') { bx = rnd(-6, 6); by = rnd(17, 22); }
+  else if (type === 'takeon') { bx = rnd(-8, 8); by = rnd(22, 27); }
+  else if (type === 'buildup') { bx = rnd(-12, 12); by = rnd(31, 37); }
   else { bx = rnd(-15, 15); by = rnd(18, 27); }
   m.ball = makeBall(bx, by);
   m.you.x = bx; m.you.y = by + 0.6;
 
   const k = type === 'penalty' ? { x: 0, y: 0.25 } : keeperSet(m.ball);
-  if (type !== 'training') m.keeper = { x: k.x, y: k.y, hx: k.x, hy: k.y, hz: 1.1, mode: 'set', react: 0, skill: opp.keeper, dive: 0 };
+  if (type !== 'training' && type !== 'crossbar') m.keeper = { x: k.x, y: k.y, hx: k.x, hy: k.y, hz: 1.1, mode: 'set', react: 0, skill: opp.keeper, dive: 0 };
 
   if (type === 'freekick') {
     const d = Math.hypot(bx, by), ux = -bx / d, uy = -by / d;        // toward goal centre
@@ -77,6 +81,25 @@ export function createMoment(type, seed, opp = { keeper: 1, defence: 1 }) {
     m.pressure = PRESSURE.base * 0.9;
     m.keeper.rush = true;
   }
+  if (type === 'takeon') {
+    // a defender steps out to meet you: beat him with a feint, then finish
+    m.phase = 'dribble';
+    m.defs.push({ x: bx + rnd(-0.6, 0.6), y: by - rnd(6.5, 8), vx: 0, vy: 0, presser: true });
+    m.defs.push({ x: bx * 0.4 + rnd(-3, 3), y: rnd(9, 12), vx: 0, vy: 0 });
+  }
+  if (type === 'buildup') {
+    // midfield: find a runner, then the move develops (one-two or their shot)
+    for (let i = 0; i < 3; i++) {
+      const sx = rnd(-14, 14);
+      m.mates.push({ x: sx, y: rnd(18, 26), run: { x: sx * 0.5, y: rnd(8, 13) }, name: '' });
+    }
+    for (let i = 0; i < 3; i++) m.defs.push({ x: rnd(-12, 12), y: rnd(14, 24), vx: 0, vy: 0 });
+    m.you.run = { x: bx * 0.4, y: rnd(14, 18) };
+    m.pressure = PRESSURE.base * 1.3;
+  }
+  if (type === 'crossbar') {
+    m.targets = [[-2.6, 2.44, 0.42], [0, 2.44, 0.42], [2.6, 2.44, 0.42]].map(([x, z, rr]) => ({ x, z, r: rr, hit: false }));
+  }
   if (type === 'training') {
     // targets inside the goal mouth: [x, z, r]
     m.targets = [[-2.8, 1.9, 0.55], [2.8, 1.9, 0.55], [-2.9, 0.45, 0.55], [2.9, 0.45, 0.55], [0, 2.0, 0.5]].map(([x, z, rr]) => ({ x, z, r: rr, hit: false }));
@@ -84,7 +107,7 @@ export function createMoment(type, seed, opp = { keeper: 1, defence: 1 }) {
   return m;
 }
 
-export function randomMomentType(r, weights = { open: 0.42, freekick: 0.24, penalty: 0.12, oneonone: 0.22 }) {
+export function randomMomentType(r, weights = { open: 0.27, freekick: 0.17, penalty: 0.08, oneonone: 0.14, takeon: 0.16, buildup: 0.18 }) {
   let x = r(), acc = 0;
   for (const t of TYPES) { acc += weights[t]; if (x < acc) return t; }
   return 'open';
@@ -110,7 +133,15 @@ export function launchShot(m, aim, skills, fatigue = 0, noise = null) {
   // aimed at the goal mouth = shot, otherwise a pass
   const dy = Math.sin(ang);
   const crossX = dy < -0.05 ? m.ball.x + Math.cos(ang) * (m.ball.y / -dy) : Infinity;
-  m.kickedAt = Math.abs(crossX) < 9 ? 'shot' : 'pass';
+  // ...unless a teammate stands near the line before the goal: then it is a pass to him
+  const cx = Math.cos(ang), cy = dy;
+  const toMate = m.mates.some(mt => {
+    const rx = mt.x - m.ball.x, ry = mt.y - m.ball.y, along = rx * cx + ry * cy;
+    const ax = (mt.target || mt.run || mt);
+    const rx2 = ax.x - m.ball.x, ry2 = ax.y - m.ball.y, along2 = rx2 * cx + ry2 * cy;
+    return (along > 0 && Math.abs(rx * cy - ry * cx) < 2.5) || (along2 > 0 && Math.abs(rx2 * cy - ry2 * cx) < 2.5);
+  });
+  m.kickedAt = Math.abs(crossX) < 9 && !toMate ? 'shot' : 'pass';
   if (m.keeper) { m.keeper.mode = 'react'; m.keeper.react = (AI.keeperReact / m.keeper.skill); m.keeper.sx = m.keeper.x; m.keeper.hx = m.keeper.x; m.keeper.hy = m.keeper.y; m.keeper.hz = 1.0; }
   if (m.type === 'penalty' && m.keeper) {
     const g = R();
@@ -152,13 +183,40 @@ function finish(m, result, extra = {}) {
   m.events.push({ type: 'result', result: m.result });
 }
 
+// Feint past the pressing defender (take-on). dir = -1 left, +1 right.
+export function feint(m, dir, composure = 30) {
+  if (m.phase !== 'dribble') return null;
+  const d = m.defs.find(x => x.presser), b = m.ball;
+  const dist = Math.hypot(d.x - b.x, d.y - b.y);
+  const window = [1.0, 3.6 + composure * 0.012];
+  if (dist < window[0]) { m.events.push({ type: 'tackle' }); finish(m, 'tackled'); return 'early-tackle'; }
+  if (dist > window[1]) { m.events.push({ type: 'toosoon' }); m.feintMiss = (m.feintMiss || 0) + 1; return 'too-soon'; }
+  // beaten: he lunges the wrong way and you go past
+  d.beaten = true; d.x -= dir * 1.4; d.y += 0.6;
+  b.x += dir * 2.2; b.y -= 4.2; m.you.x = b.x; m.you.y = b.y + 0.6;
+  m.phase = 'aim'; m.pressure = PRESSURE.base * 0.75;
+  if (m.keeper) { const s = keeperSet(b); m.keeper.x = s.x; m.keeper.y = s.y; }
+  m.events.push({ type: 'skill', perfect: dist < 2.2 });
+  return dist < 2.2 ? 'perfect' : 'good';
+}
+
 // Real-time step while aiming (pressure, rushing keeper).
 export function stepAim(m, dt) {
+  if (m.phase === 'dribble') {
+    m.t += dt;
+    const d = m.defs.find(x => x.presser), b = m.ball;
+    moveToward(d, b.x, b.y - 0.6, 3.4, dt);
+    // you keep running at him
+    b.y -= 1.2 * dt; m.you.y = b.y + 0.6;
+    if (Math.hypot(d.x - b.x, d.y - b.y) < 0.85) { m.events.push({ type: 'tackle' }); finish(m, 'tackled'); }
+    return;
+  }
   if (m.phase !== 'aim') return;
   m.t += dt;
   if (m.pressure != null) {
     m.pressure -= dt;
     for (const d of m.defs) {
+      if (d.beaten) continue;
       const tx = m.ball.x + (0 - m.ball.x) * 0.08, ty = m.ball.y - 1.1;
       const dd = Math.hypot(d.x - m.ball.x, d.y - m.ball.y);
       if (dd > 1.25) moveToward(d, d.chaser ? m.ball.x : tx, d.chaser ? m.ball.y + 0.9 : ty, d.chaser ? 4.2 : 1.1, dt);
@@ -203,10 +261,11 @@ function substep(m) {
   // ----- defenders chase / block (they react to the ball, not your intentions)
   const lead = 0.22;
   for (const d of m.defs) {
-    if (m.flightT < AI.defReact / m.opp.defence) continue;
+    const passing = m.kickedAt === 'pass' || m.shooter === 'mate-pass';
+    if (d.beaten || m.flightT < (passing ? 0.34 : AI.defReact) / m.opp.defence) continue;
     const tx = b.x + b.vx * lead, ty = b.y + b.vy * lead;
     const fast = Math.hypot(b.vx, b.vy) > 14 && m.kickedAt === 'shot';
-    moveToward(d, tx, ty, fast ? AI.lunge * m.opp.defence : AI.defSpeed * m.opp.defence * (d.chaser ? 1.05 : 1), DT);
+    moveToward(d, tx, ty, fast ? AI.lunge * m.opp.defence : AI.defSpeed * m.opp.defence * (d.chaser ? 1.05 : passing ? 0.78 : 1), DT);
     const dd = Math.hypot(d.x - b.x, d.y - b.y);
     if ((dd < AI.defReach && b.z < 1.1) || (dd < 0.5 && b.z < AI.defJump)) {
       b.vx = -b.vx * 0.3 + (m.r() - 0.5) * 6; b.vy = Math.abs(b.vy) * 0.3 + 2; b.vz = 2; b.spin = 0;
@@ -294,7 +353,7 @@ function substep(m) {
   }
 
   // ----- training targets
-  if (m.type === 'training' && prev.y > 0 && b.y <= 0) {
+  if ((m.type === 'training' || m.type === 'crossbar') && prev.y > 0 && b.y <= 0) {
     const f = prev.y / (prev.y - b.y || 1), x = prev.x + (b.x - prev.x) * f, z = prev.z + (b.z - prev.z) * f;
     for (const tg of m.targets) if (!tg.hit && Math.hypot(x - tg.x, z - tg.z) < tg.r) { tg.hit = true; m.events.push({ type: 'target', tg }); }
   }

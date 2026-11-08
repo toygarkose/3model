@@ -1,5 +1,5 @@
 // Plays one moment: pull-back aiming with curl, the flight, and all the juice.
-import { createMoment, launchShot, previewPath, stepAim, stepFlight, mateDecision } from '../sim/moment.js';
+import { createMoment, launchShot, previewPath, stepAim, stepFlight, mateDecision, feint } from '../sim/moment.js';
 import { SHOT, PRESSURE } from '../data/config.js';
 import { haptics } from '../fx/haptics.js';
 
@@ -23,6 +23,9 @@ export class MomentPlay {
     this.aim = null;
     this.doneTimer = null;
     this.mateTimer = null;
+    this.rec = [];
+    this.replay = null;
+    this.swipe = null;
     this.fx.clear();
     this.renderer.frame(this.m, ctx.top, ctx.bottom, true);
     return this.m;
@@ -31,6 +34,9 @@ export class MomentPlay {
   dragMax() { return Math.min(this.renderer.W, this.renderer.H) * SHOT.maxDragFrac; }
 
   down(x, y) {
+    if (this.paused) return false;
+    if (this.replay) { this.replay.t = 1e9; return false; }      // tap skips the replay
+    if (this.m?.phase === 'dribble') { this.swipe = { x, y, t: performance.now() }; return true; }
     if (!this.m || this.m.phase !== 'aim') return false;
     this.aim = { sx: x, sy: y, x, y, path: [[x, y]], power: 0, curl: 0, ok: false };
     this.audio.chargeStart();
@@ -65,7 +71,13 @@ export class MomentPlay {
 
   _aimObj(a = this.aim) { return { dx: a.dir.dx, dy: a.dir.dy, power: a.power, curl: a.curl, lob: this.lob }; }
 
-  up() {
+  up(x, y) {
+    if (this.swipe) {
+      const sw = this.swipe; this.swipe = null;
+      const dx = (x ?? sw.x) - sw.x, dy = (y ?? sw.y) - sw.y;
+      if (Math.abs(dx) > 28 && Math.abs(dx) > Math.abs(dy) * 1.2 && performance.now() - sw.t < 450) this.doFeint(Math.sign(dx));
+      return;
+    }
     const a = this.aim;
     this.aim = null;
     this.audio.chargeStop();
@@ -89,14 +101,33 @@ export class MomentPlay {
     return true;
   }
 
+  doFeint(dir) {
+    const r = feint(this.m, dir, this.ctx.skills.composure);
+    if (r === 'perfect' || r === 'good') {
+      this.audio.play('pass', { rate: 1.4, vol: 0.6 }); this.audio.play('ooh', { vol: 0.5, rate: 1.2 });
+      this.fx.pop(r === 'perfect' ? 'PERFECT SKILL!' : 'SKILL!', this.m.ball.x, this.m.ball.y - 1, { color: '#7dffb2', size: 28 });
+      this.fx.slowMo(0.35, 0.4); this.fx.shake(0.15); haptics.medium();
+    } else if (r === 'too-soon') {
+      this.fx.pop('TOO EARLY', this.m.ball.x, this.m.ball.y - 1, { color: '#ffd1a1', size: 22 });
+    }
+    return r;
+  }
+
   toggleLob() { this.lob = !this.lob; haptics.tick(); this.audio.play('click'); return this.lob; }
 
   update(dt) {
+    if (this.paused) return;
+    if (this.replay) return this._updateReplay(dt);
     const m = this.m; if (!m) return;
     const ts = this.fx.timeScale(), sdt = dt * ts;
     this.fx.update(dt, sdt);
-    if (m.phase === 'aim') stepAim(m, dt);
-    if (m.phase === 'flight' || m.phase === 'after') stepFlight(m, sdt);
+    if (m.phase === 'aim' || m.phase === 'dribble') stepAim(m, dt);
+    if (m.phase === 'flight' || m.phase === 'after') {
+      stepFlight(m, sdt);
+      const k = m.keeper;
+      this.rec.push({ b: { ...m.ball }, k: k && { x: k.x, y: k.y, hz: k.hz, dive: k.dive, mode: k.mode }, w: m.wall.map(w => w.jump) });
+      if (this.rec.length > 400) this.rec.shift();
+    }
     if (m.phase === 'mate') {
       this.mateTimer = (this.mateTimer ?? 0.35) - dt;
       if (this.mateTimer <= 0) { this.mateTimer = null; mateDecision(m, this.ctx.teamRel); }
@@ -105,9 +136,35 @@ export class MomentPlay {
     if (m.phase === 'done' && this.doneTimer == null) this.doneTimer = m.result?.kind === 'goal' ? 1.4 : 1.0;
     if (this.doneTimer != null) {
       this.doneTimer -= dt;
-      if (this.doneTimer <= 0) { const r = m.result; this.doneTimer = null; this.m = null; this.onResult?.(r); return; }
+      if (this.doneTimer <= 0) {
+        const r = m.result; this.doneTimer = null;
+        if (r?.kind === 'goal' && this.ctx.replays !== false && this.rec.length > 20) { this._startReplay(); return; }
+        this.m = null; this.onResult?.(r); return;
+      }
     }
-    this.renderer.follow(dt, m.ball, m.phase === 'flight' && m.kickedAt === 'shot');
+    if (!this.replay) this.renderer.follow(dt, m.ball, m.phase === 'flight' && m.kickedAt === 'shot');
+  }
+
+  _startReplay() {
+    const m = this.m, end = m.result;
+    // goal-mouth camera beside the post, at half speed
+    const side = end.x >= 0 ? 1 : -1;
+    this.renderer.setCam([side * 5.5 + end.x * 0.3, 8.5, 1.5], [end.x * 0.5, 0.5, 1.1], Math.min(this.renderer.W, this.renderer.H) * 1.05);
+    this.replay = { t: 0, i: 0 };
+    this.onEvent?.('replay', {});
+  }
+
+  _updateReplay(dt) {
+    const R = this.replay, m = this.m;
+    R.t += dt * 0.5 * 120 / 1;
+    const i = Math.min(this.rec.length - 1, Math.floor(R.t * 0.5));
+    const snap = this.rec[i];
+    if (snap) { Object.assign(m.ball, snap.b); if (snap.k && m.keeper) Object.assign(m.keeper, snap.k); m.wall.forEach((w, j) => { w.jump = snap.w[j] ?? w.jump; }); }
+    if (i >= this.rec.length - 1 || R.t > 1e8) {
+      const r = m.result; this.replay = null; this.m = null;
+      this.onEvent?.('replayend', {});
+      this.onResult?.(r);
+    }
   }
 
   _event(e) {
@@ -169,6 +226,14 @@ export class MomentPlay {
         g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 5; g.beginPath(); g.arc(x, y, 30, 0, TAU); g.stroke();
         g.strokeStyle = k > 0.35 ? 'rgba(255,214,110,0.95)' : 'rgba(255,90,70,0.95)';
         g.beginPath(); g.arc(x, y, 30, -Math.PI / 2, -Math.PI / 2 + TAU * k); g.stroke();
+      }
+      if (m.phase === 'dribble') {
+        const d = m.defs.find(x => x.presser), dist = Math.hypot(d.x - m.ball.x, d.y - m.ball.y);
+        const [x, y] = P(m.ball.x, m.ball.y, 0);
+        const hot = dist < 3.6 + this.ctx.skills.composure * 0.012 && dist > 1.0;
+        g.font = '800 30px "Barlow Condensed", sans-serif'; g.textAlign = 'center';
+        g.fillStyle = hot ? '#7dffb2' : 'rgba(255,255,255,0.55)';
+        g.fillText('◀  NOW  ▶'.replace('NOW', hot ? 'NOW!' : 'WAIT'), x, y - 60);
       }
       const a = this.aim;
       if (a && a.ok && m.phase === 'aim') {

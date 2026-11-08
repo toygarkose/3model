@@ -37,3 +37,17 @@ export const CLUBS = {
 
 export const FIRST_NAMES = ['Jamie', 'Leo', 'Marco', 'Ryo', 'Theo', 'Sami', 'Diego', 'Ade', 'Luca', 'Kai', 'Noah', 'Ibrahim', 'Mateo', 'Joon', 'Viktor', 'Emre'];
 export const LAST_NAMES = ['Carter', 'Silva', 'Okafor', 'Novak', 'Haddad', 'Moreau', 'Kowalski', 'Tanaka', 'Rossi', 'Mensah', 'Berg', 'Duarte', 'Yilmaz', 'Brennan', 'Park', 'Adeyemi'];
+
+
+// Nations for international call-ups (country names only).
+export const NATIONS = ['Türkiye', 'England', 'Brazil', 'Argentina', 'Spain', 'France', 'Germany', 'Italy', 'Portugal', 'Netherlands', 'Belgium', 'Croatia', 'Morocco', 'Senegal', 'Nigeria', 'Ghana', 'Egypt', 'Japan', 'South Korea', 'USA', 'Mexico', 'Colombia', 'Uruguay', 'Poland', 'Sweden', 'Norway', 'Denmark', 'Scotland', 'Wales', 'Ireland', 'Australia', 'Canada'];
+
+// Fictional sponsors.
+export const SPONSORS = [
+  { name: 'Kickline Boots', base: 0.25 }, { name: 'Volta Energy', base: 0.3 }, { name: 'Harbor Bank', base: 0.35 },
+  { name: 'Orbit Mobile', base: 0.4 }, { name: 'NovaFit Wear', base: 0.3 }, { name: 'Crestline Watches', base: 0.55 },
+  { name: 'Fizzwell Cola', base: 0.45 }, { name: 'Strata Motors', base: 0.7 },
+];
+
+export const CUPS = { 4: 'County Cup', 3: 'National Shield', 2: 'Union Trophy', 1: 'Elite Champions Cup' };
+export const PARTNER_NAMES = ['Alex', 'Sam', 'Robin', 'Jordan', 'Charlie', 'Elif', 'Deniz', 'Maya', 'Noa', 'Kim', 'Luca', 'Ari'];
