@@ -1,0 +1,15 @@
+{
+  "name": "striker-story",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "STRIKER STORY - pull-back-and-release football career game for the browser",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build && node tools/inline-build.mjs",
+    "preview": "vite preview --host --port 4175",
+    "balance": "node tools/balance.mjs",
+    "test": "node tools/playtest.mjs"
+  },
+  "devDependencies": { "vite": "5.4.11" }
+}
