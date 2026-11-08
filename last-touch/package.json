@@ -1,0 +1,20 @@
+{
+  "name": "last-touch",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "LAST TOUCH - 3D football story game for the browser",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build && node tools/inline-build.mjs && node tools/make-artifact.mjs",
+    "preview": "vite preview --host",
+    "check-levels": "node tools/check-levels.mjs",
+    "test": "node tools/playtest.mjs"
+  },
+  "dependencies": {
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "vite": "5.4.11"
+  }
+}
