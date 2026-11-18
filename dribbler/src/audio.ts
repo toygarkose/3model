@@ -57,7 +57,32 @@ export class Sfx {
     this.noise(dur, 0.06, 2200, 2200, 6);
   }
   kick(power: number) { this.tone(120, 0.12, 'sine', 0.5, 0, 50); this.noise(0.1, 0.3 + power * 0.3, 1200, 300, 0.8); }
-  post() { this.tone(880, 0.5, 'triangle', 0.3); this.tone(1320, 0.35, 'sine', 0.2); }
+  /** Üst direk: sert vuruş + çınlayan metal. Uyumsuz üst sesler metalin "tınnn" sesini verir. */
+  post() {
+    const c = this.ctx; if (!c) return;
+    this.noise(0.035, 1.0, 5200, 1800, 0.6);                    // topun demire çarptığı an
+    this.tone(118, 0.22, 'sine', 0.75, 0, 62);                  // gövde: tok vuruş
+    const parts: [number, number, number][] = [[412, 0.9, 0.5], [968, 1.4, 0.42], [1541, 1.1, 0.3], [2290, 0.8, 0.22], [3127, 0.55, 0.14], [4380, 0.35, 0.08]];
+    for (const [f, dur, vol] of parts) {
+      const t = c.currentTime, o = c.createOscillator(), g = c.createGain(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.012, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.06);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.02);
+    }
+    this.ooh();
+  }
+  /** Tribünün "ooo" tepkisi */
+  ooh() {
+    const c = this.ctx; if (!c) return;
+    const t = c.currentTime + 0.08, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    s.buffer = this.noiseBuf; s.loop = true; f.type = 'bandpass'; f.Q.value = 1.6;
+    f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(380, t + 1.3);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.55, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    s.connect(f).connect(g).connect(this.master); s.start(t, Math.random()); s.stop(t + 1.6);
+  }
+  /** Koşu adımıyla yükselen beklenti */
+  rise() { this.noise(0.75, 0.3, 350, 1500, 0.5); }
+  step() { this.noise(0.05, 0.1, 900, 400, 1.2); }
   goal() { this.noise(2.6, 0.75, 500, 1500, 0.35); this.noise(2.2, 0.4, 900, 2200, 0.5, 0.1); [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.4, 'triangle', 0.22, 0.1 + i * 0.09)); }
   private chargeOsc: OscillatorNode | null = null; private chargeGain: GainNode | null = null;
   /** Güç dolarken yükselen ton */

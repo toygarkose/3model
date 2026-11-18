@@ -83,6 +83,19 @@ const G = {
 };
 const THIGH = 0.42, SHIN = 0.42, FOOT = 0.085, HIP = THIGH + SHIN + FOOT;
 
+function shadowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d')!;
+  for (let i = 0; i < 4; i++) {
+    g.save(); g.translate(64, 64); g.rotate(Math.PI / 4 + i * Math.PI / 2); g.scale(1, 0.34);
+    const gr = g.createRadialGradient(26, 0, 0, 26, 0, 34); gr.addColorStop(0, 'rgba(4,10,24,.42)'); gr.addColorStop(1, 'rgba(4,10,24,0)');
+    g.fillStyle = gr; g.fillRect(-10, -60, 80, 120); g.restore();
+  }
+  const core = g.createRadialGradient(64, 64, 0, 64, 64, 16); core.addColorStop(0, 'rgba(4,10,24,.5)'); core.addColorStop(1, 'rgba(4,10,24,0)'); g.fillStyle = core; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+export const SHADOW_GEO = new THREE.PlaneGeometry(3.4, 3.4);
+export const SHADOW_MAT = new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, fog: false });
+
 export interface Look { kit: Kit; number: number; boot: { color: string; sole: string }; hair: number; hairColor: string; skin: string }
 
 function mat(color: string | number, rough = 0.75) { return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 }); }
@@ -93,7 +106,7 @@ export class Footballer {
   private spine = new THREE.Group();
   private headG = new THREE.Group();
   private hairG = new THREE.Group();
-  private hip: THREE.Group[] = []; private knee: THREE.Group[] = [];
+  private hip: THREE.Group[] = []; private knee: THREE.Group[] = []; private foot: THREE.Group[] = []; private shadow!: THREE.Mesh;
   private sh: THREE.Group[] = []; private el: THREE.Group[] = [];
   private mSkin = mat('#c98e62', 0.8); private mJersey = mat('#ffffff', 0.85); private mSleeve = mat('#fff', 0.85);
   private mShorts = mat('#222', 0.85); private mSock = mat('#fff', 0.9); private mBoot = mat('#fff', 0.4); private mSole = mat('#222', 0.6);
@@ -128,9 +141,13 @@ export class Footballer {
       add(hip, G.thigh, this.mSkin, 0, -0.2, 0); add(hip, G.shortLeg, this.mShorts, 0, -0.1, 0);
       const kn = new THREE.Group(); kn.position.y = -THIGH; hip.add(kn); this.knee.push(kn);
       add(kn, G.knee, this.mSkin); add(kn, G.shin, this.mSock, 0, -0.21, 0);
-      const boot = add(kn, G.boot, this.mBoot, 0, -SHIN - 0.015, 0.06); boot.rotation.x = Math.PI / 2; boot.scale.set(1, 1, 0.82);
-      add(kn, G.sole, this.mSole, 0, -SHIN - 0.065, 0.06);
+      // ayak bileği: ayak tabanı yere basarken yatay kalır
+      const ft = new THREE.Group(); ft.position.y = -SHIN; kn.add(ft); this.foot.push(ft);
+      const boot = add(ft, G.boot, this.mBoot, 0, -0.015, 0.06); boot.rotation.x = Math.PI / 2; boot.scale.set(1, 1, 0.82);
+      add(ft, G.sole, this.mSole, 0, -0.065, 0.06);
     }
+    // stadyum ışığı gölgesi: dört projektörden dört yöne düşen yumuşak gölge
+    this.shadow = new THREE.Mesh(SHADOW_GEO, SHADOW_MAT); this.shadow.rotation.x = -Math.PI / 2; this.shadow.position.y = 0.018; this.shadow.renderOrder = 1; this.root.add(this.shadow);
     this.setLook(look);
   }
 
@@ -177,6 +194,9 @@ export class Footballer {
     this.root.rotation.y = this.baseYaw + c.yaw;
     this.spine.rotation.set(c.spine, c.twist, 0);
     this.headG.rotation.x = c.head;
+    const lvl = (th: number, kn: number) => Math.max(-0.9, Math.min(0.9, (th - kn - c.pitch) * 0.85 * c.g));
+    this.foot[0].rotation.x = lvl(c.thL, c.knL); this.foot[1].rotation.x = lvl(c.thR, c.knR);
+    this.shadow.rotation.z = -this.root.rotation.y; const air = Math.max(0, this.body.position.y - HIP); this.shadow.scale.setScalar(1 / (1 + air * 0.8));
     this.hip[0].rotation.set(-c.thL, 0, c.abL); this.hip[1].rotation.set(-c.thR, 0, -c.abR);
     this.knee[0].rotation.x = c.knL; this.knee[1].rotation.x = c.knR;
     this.sh[0].rotation.set(-c.shL, 0, c.saL); this.sh[1].rotation.set(-c.shR, 0, -c.saR);

@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { Game, Summary, Skills } from './game';
 import { Sfx } from './audio';
 import { Look } from './character';
@@ -48,6 +52,8 @@ const game = new Game(scene, camera, sfx, {
     $('bUs').textContent = String(us); $('bThem').textContent = String(them); $('bRival').textContent = rival; $('bMin').textContent = minute + "'";
     $('dots').querySelectorAll('i').forEach((el, i) => { el.className = results[i] || (i === results.length ? 'now' : ''); });
   },
+  card(big, small) { const c = $('card'); $('cBig').textContent = big; $('cSmall').textContent = small; c.hidden = false; c.style.animation = 'none'; void c.offsetWidth; c.style.animation = 'card 1.9s ease-out forwards'; },
+  power(p, on) { const el = $('power'); el.hidden = !on; if (on) { $('pfill').style.transform = `scaleY(${p})`; el.classList.toggle('hot', p > 0.9); $('ppct').textContent = Math.round(p * 100) + ''; } },
   prompt(title, text) { $('pTitle').textContent = title; $('pText').textContent = text; promptEl.hidden = !title && !text; },
   contact(on, time, drift) {
     contactEl.hidden = !on; $('mark').hidden = true;
@@ -75,7 +81,7 @@ const game = new Game(scene, camera, sfx, {
     $('oScore').textContent = s.us + ' - ' + s.them; $('oRival').textContent = 'Dribbler SK - ' + s.rival;
     $('oGoals').textContent = String(s.goals); $('oAst').textContent = String(s.assists); $('oRate').textContent = s.rating.toFixed(1); $('oCoin').textContent = '+' + earn + ' ₺';
     $('oNote').textContent = note; $('oNote').hidden = !note;
-    hud.hidden = true; promptEl.hidden = true; contactEl.hidden = true; over.hidden = false;
+    hud.hidden = true; promptEl.hidden = true; contactEl.hidden = true; $('card').hidden = true; $('power').hidden = true; over.hidden = false;
   },
 }, lookOf(save.loadout));
 let view: Loadout = { ...save.loadout };
@@ -83,16 +89,21 @@ const applyLook = () => { game.setPlayerLook(lookOf(view)); game.setKeeperLook(k
 applyLook();
 (document as any).fonts?.ready?.then(applyLook);
 
+// ışık parlaması: projektörler, LED panolar ve beyaz çizgiler hafifçe ışıldar
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.7, 0.86); composer.addPass(bloom); composer.addPass(new OutputPass());
+let useBloom = true, ratio = Math.min(window.devicePixelRatio || 1, 2);
 function resize() {
   const w = app.clientWidth, h = app.clientHeight; if (!w || !h) return;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setPixelRatio(ratio); renderer.setSize(w, h, false); composer.setPixelRatio(ratio); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(app); resize();
 
 // ---------- ekranlar ----------
 const level = () => (save.season - 1) * 3 + Math.floor(save.week / 2);
 function showMenu() {
-  game.toMenu(); menu.hidden = false; hud.hidden = true; how.hidden = true; over.hidden = true; promptEl.hidden = true; contactEl.hidden = true;
+  game.toMenu(); $('card').hidden = true; $('power').hidden = true; menu.hidden = false; hud.hidden = true; how.hidden = true; over.hidden = true; promptEl.hidden = true; contactEl.hidden = true;
   view = { ...save.loadout }; applyLook(); renderAll();
 }
 function play() {
@@ -195,7 +206,7 @@ document.querySelectorAll<HTMLElement>('#tabs button').forEach(b => b.onclick = 
 // ---------- kontroller ----------
 // 1) Ekrana bas, geri çek (sapan gibi), bırak: yön ve güç.  2) Büyük topa dokun: vuruş noktası.
 let dragId = -1, dx0 = 0, dy0 = 0;
-canvas.addEventListener('pointerdown', e => { sfx.unlock(); if (game.mode !== 'aim' || dragId >= 0) return; dragId = e.pointerId; dx0 = e.clientX; dy0 = e.clientY; });
+canvas.addEventListener('pointerdown', e => { sfx.unlock(); if (game.mode === 'intro') { game.skipIntro(); return; } if (game.mode !== 'aim' || dragId >= 0) return; dragId = e.pointerId; dx0 = e.clientX; dy0 = e.clientY; });
 window.addEventListener('pointermove', e => { if (e.pointerId === dragId) game.aimDrag(e.clientX - dx0, e.clientY - dy0, app.clientHeight); });
 const end = (e: PointerEvent) => { if (e.pointerId !== dragId) return; dragId = -1; game.aimRelease(); };
 window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
@@ -208,10 +219,17 @@ bigBall.addEventListener('pointerdown', e => {
 window.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && (game.mode === 'menu' || game.mode === 'done') && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); if (!how.hidden) $('howOk').click(); else play(); } });
 
 showMenu();
-let last = performance.now();
+let last = performance.now(), prev = last, acc = 0, frames = 0;
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  game.update(dt); renderer.render(scene, camera);
+  game.update(dt);
+  if (useBloom) composer.render(); else renderer.render(scene, camera);
+  // cihaz zorlanıyorsa önce parlamayı, sonra çözünürlüğü düşür
+  if (game.mode !== 'menu' && game.mode !== 'done') {
+    acc += now - prev; frames++;
+    if (frames === 90) { const avg = acc / frames; if (avg > 27 && useBloom) useBloom = false; else if (avg > 27 && ratio > 1) { ratio = Math.max(1, ratio - 0.5); resize(); } acc = 0; frames = 0; }
+  }
+  prev = now;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

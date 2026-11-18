@@ -34,6 +34,18 @@ button:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 #dots i.goal { background: var(--volt); border-color: var(--volt); }
 #dots i.assist { background: var(--mint); border-color: var(--mint); }
 #dots i.miss { background: var(--flare); border-color: var(--flare); }
+#vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(5,8,28,.5) 100%); }
+/* an kartı: dakika + anın adı, yayın grafiği gibi girer ve çıkar */
+#card { position: absolute; left: 0; top: 30%; display: flex; align-items: stretch; pointer-events: none; filter: drop-shadow(0 6px 0 rgba(5,8,28,.45)); }
+#card b { padding: 10px 14px 10px var(--gl); font: italic 800 44px/1 var(--display); color: var(--night); background: var(--volt); font-variant-numeric: tabular-nums; }
+#card span { display: flex; align-items: center; padding: 10px 26px 10px 14px; font: italic 800 40px/1 var(--display); text-transform: uppercase; letter-spacing: .02em; background: var(--night); clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%); }
+@keyframes card { 0% { transform: translateX(-105%); } 12% { transform: translateX(0); } 78% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(-105%); opacity: 0; } }
+/* güç çubuğu */
+#power { position: absolute; right: var(--gr); top: 32%; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.ptrack { width: 16px; height: 200px; background: rgba(13,18,51,.7); border: 2px solid var(--chalk); display: flex; align-items: flex-end; }
+#pfill { width: 100%; height: 100%; transform-origin: bottom; background: linear-gradient(0deg, var(--chalk) 0 55%, var(--volt) 55% 88%, var(--flare) 88%); }
+#ppct { font: italic 800 26px/1 var(--display); font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 var(--night); }
+#power.hot #ppct { color: var(--flare); }
 #prompt { position: absolute; left: var(--gl); right: var(--gr); bottom: calc(26px + env(safe-area-inset-bottom, 0px)); padding: 12px 14px; background: rgba(13,18,51,.82); border-left: 4px solid var(--volt); pointer-events: none; display: flex; flex-direction: column; gap: 4px; }
 #prompt b { font: italic 800 24px/1 var(--display); letter-spacing: .03em; text-transform: uppercase; }
 #prompt b:empty { display: none; }
@@ -129,7 +141,7 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
 .stats div { border-top: 2px solid var(--line); padding-top: 8px; }
 .stats dt { font: 600 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
 .stats dd { margin: 4px 0 0; font: 800 30px/1 var(--display); font-variant-numeric: tabular-nums; }
-@media (prefers-reduced-motion: reduce) { .pop { animation-duration: .01s; }  }
+@media (prefers-reduced-motion: reduce) { .pop { animation-duration: .01s; } #card { animation-duration: .01s !important; }  }
 </style>
 <div id="app">
   <canvas id="c" aria-label="Dribbler oyun sahnesi"></canvas>
@@ -137,6 +149,9 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
     <div class="board"><span class="team">Dribbler SK</span><b id="bUs">0</b><span class="sep">-</span><b id="bThem">0</b><span class="team" id="bRival">Rakip</span><span id="bMin">0'</span></div>
     <div id="dots" aria-label="Maçtaki anlar"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
+  <div id="vignette"></div>
+  <div id="card" hidden><b id="cBig"></b><span id="cSmall"></span></div>
+  <div id="power" hidden><div class="ptrack"><div id="pfill"></div></div><span id="ppct">0</span></div>
   <div id="prompt" hidden><b id="pTitle"></b><span id="pText"></span></div>
   <div id="contact" hidden>
     <div id="bigball"><div id="ctime"></div><div class="guide">Alt: havadan · Yan: falso</div><div id="mark" hidden></div></div>
