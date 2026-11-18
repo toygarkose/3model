@@ -15,6 +15,7 @@ export interface Hooks {
   prompt(title: string, text: string): void;
   card(big: string, small: string): void;
   power(p: number, on: boolean): void;
+  timing(on: boolean, dur: number): void;
   contact(on: boolean, time: number, drift: number): void;
   over(s: Summary): void;
 }
@@ -27,7 +28,7 @@ const vib = (p: number | number[]) => { try { navigator.vibrate?.(p); } catch { 
 interface Plan { T: number; x: number; y: number; from: number; dir: number; dist: number; reach: boolean; kind: 'catch' | 'parry' | 'tip'; done: boolean; dive: boolean }
 interface Def { fb: Footballer; x: number; z: number; wall: boolean; phase: number }
 type Mode = 'menu' | 'intro' | 'aim' | 'contact' | 'runup' | 'fly' | 'result' | 'done';
-const RUNUP = 0.6;
+const RUNUP = 0.85, SWEET = 0.78;   // koşu adımı süresi ve tam vuruş anı
 
 export class Game {
   mode: Mode = 'menu';
@@ -48,6 +49,7 @@ export class Game {
   private mx = 0; private mz = 0; private mTo = new THREE.Vector2(); private mPhase = 0; private mGot = false;
   // kaleci
   private kx = 0; private kz = GZ + 0.7; private kState: 'set' | 'dive' | 'down' | 'hold' = 'set'; private kT = 0; private plan: Plan | null = null;
+  private preview!: THREE.Points; private meet!: THREE.Mesh; private tapT = -1;
   private hit = { cx: 0, cy: 0 }; private ppx = 0; private ppz = 0; private pPhase = 0; private celT = -1; private camCut = false; private ballShadow!: THREE.Mesh;
   private clock = 0; private hitstop = 0; private slow = 0; private shake = 0;
   private camPos = new THREE.Vector3(0, 7, 30); private camLook = new THREE.Vector3(0, 1, 10);
@@ -66,6 +68,13 @@ export class Game {
     this.arrow = new THREE.Group(); this.arrow.add(shaft, head); this.arrow.position.y = 0.04; this.arrow.visible = false; scene.add(this.arrow);
     this.runLine = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: 0x39f0c8, transparent: true, opacity: 0.7, depthWrite: false, fog: false, side: THREE.DoubleSide }));
     this.runLine.rotation.order = 'YXZ'; this.runLine.rotation.x = Math.PI / 2; this.runLine.position.y = 0.035; this.runLine.visible = false; scene.add(this.runLine);
+    // yörünge önizlemesi: topun gideceği yolun ilk kısmını noktalarla gösterir
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(90 * 3), 3)); pg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(90 * 3), 3));
+    const dc = document.createElement('canvas'); dc.width = dc.height = 32; const dg = dc.getContext('2d')!; dg.fillStyle = '#fff'; dg.beginPath(); dg.arc(16, 16, 13, 0, 7); dg.fill();
+    this.preview = new THREE.Points(pg, new THREE.PointsMaterial({ size: 0.3, map: new THREE.CanvasTexture(dc), vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.preview.frustumCulled = false; this.preview.visible = false; scene.add(this.preview);
+    this.meet = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 40), new THREE.MeshBasicMaterial({ color: 0x39f0c8, transparent: true, opacity: 0.9, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    this.meet.rotation.x = -Math.PI / 2; this.meet.position.y = 0.045; this.meet.visible = false; scene.add(this.meet);
     this.ballShadow = new THREE.Mesh(SHADOW_GEO, SHADOW_MAT); this.ballShadow.rotation.x = -Math.PI / 2; this.ballShadow.renderOrder = 1; scene.add(this.ballShadow);
     scene.add(this.fx.points);
     this.toMenu();
@@ -77,7 +86,7 @@ export class Game {
   setBall(b: { base: string; patch: string; style: string }) { const o = this.ballMat.map; this.ballMat.map = makeBallTexture(b); this.ballMat.needsUpdate = true; o?.dispose(); }
 
   toMenu() {
-    this.mode = 'menu'; this.clearDefs(); this.arrow.visible = false; this.runLine.visible = false; this.mate.root.visible = false; this.hooks.contact(false, 0, 0);
+    this.mode = 'menu'; this.clearDefs(); this.preview.visible = false; this.meet.visible = false; this.arrow.visible = false; this.runLine.visible = false; this.mate.root.visible = false; this.hooks.contact(false, 0, 0);
     this.player.root.position.set(0, 0, 0); this.kx = 0; this.kz = GZ + 0.7; this.kState = 'set'; this.plan = null;
     this.camera.fov = 40; this.camera.updateProjectionMatrix();
   }
@@ -149,7 +158,7 @@ export class Game {
     if (this.type === 'pass') this.fwd.set(0.2 * (this.mx - this.spot.x), -19).normalize();
     if (this.type === 'cross') this.fwd.set(-0.5 * this.spot.x, -18).normalize();
     this.kState = 'set'; this.plan = null; this.kx = clamp(this.spot.x * 0.12, -1.5, 1.5); this.kz = GZ + 0.7;
-    this.kicker = 'player'; this.kickT = 9; this.aiming = false; this.power = 0; this.arrow.visible = false;
+    this.kicker = 'player'; this.kickT = 9; this.aiming = false; this.power = 0; this.arrow.visible = false; this.hit = { cx: 0, cy: 0 }; this.hooks.timing(false, 0);
     this.mode = 'intro'; this.t = 0;
     this.hooks.board(this.us, this.them, this.minutes[this.idx], this.rival, this.results);
     this.hooks.prompt('', news + text);
@@ -180,30 +189,72 @@ export class Game {
   aimRelease() {
     if (this.mode !== 'aim') return;
     if (!this.aiming || this.power < 0.08) { this.aiming = false; this.arrow.visible = false; this.hooks.power(0, false); return; }
-    this.mode = 'contact'; this.t = 0; this.aiming = false; this.hooks.contact(true, this.contactTime, Math.max(0, 20 - this.sk.calm * 4 + Math.min(8, this.level))); this.hooks.prompt('', 'Topun neresine vuracaksın?'); vib(15);
+    this.mode = 'contact'; this.t = 0; this.aiming = false; this.hit = { cx: 0, cy: 0 }; this.hooks.contact(true, this.contactTime, Math.max(0, 20 - this.sk.calm * 4 + Math.min(8, this.level))); this.hooks.prompt('', ''); vib(15);
   }
   /** cx, cy: topun üzerindeki vuruş noktası (-1..1). Alt = havalanır, yan = falso. */
+  /** Vuruş noktasına göre çıkış hızı, yükseliş açısı ve falso ivmesi */
+  private params(cx: number, cy: number) {
+    const p = this.power, off = Math.min(1, Math.hypot(cx, cy));
+    return { v: (9 + (20 + 1.6 * this.sk.power) * p) * (1 - 0.12 * off), th: clamp(0.13 - cy * (cy < 0 ? 0.33 : 0.115), 0.015, 0.5) * (0.6 + 0.4 * p), k: Math.abs(cx) > 0.12 ? -cx * (8 + 1.5 * this.sk.curve) * (0.35 + 0.65 * p) : 0 };
+  }
+  /** Şu anki nişan ve vuruş noktasıyla topun izleyeceği yol */
+  private simulate(cx: number, cy: number) {
+    const { v, th, k } = this.params(cx, cy), d = this.aimDir, qx = -d.y, qz = d.x, h = 0.03, out: { x: number; y: number; z: number; t: number }[] = [];
+    const p = new THREE.Vector3(this.spot.x, BALL_R, this.spot.z), w = new THREE.Vector3(d.x * v * Math.cos(th), v * Math.sin(th), d.y * v * Math.cos(th)); let ct = k ? 1.7 : 0;
+    for (let t = h; t < 2.6 && out.length < 88; t += h) {
+      if (ct > 0) { w.x += qx * k * h; w.z += qz * k * h; ct -= h; }
+      w.y -= G * h; p.addScaledVector(w, h);
+      if (p.y < BALL_R) { p.y = BALL_R; if (w.y < -1.2) { w.y *= -0.58; w.x *= 0.86; w.z *= 0.86; ct = 0; } else { w.y = 0; w.x *= 0.973; w.z *= 0.973; } }
+      out.push({ x: p.x, y: p.y, z: p.z, t });
+      if (p.z < GZ - 0.4 || Math.abs(p.x) > HALF_W + 2) break;
+    }
+    return out;
+  }
+  private drawPreview() {
+    const on = (this.mode === 'aim' && this.aiming) || this.mode === 'contact'; this.preview.visible = on; this.meet.visible = false; if (!on) return;
+    const pts = this.simulate(this.hit.cx, this.hit.cy), pos = this.preview.geometry.attributes.position as THREE.BufferAttribute, col = this.preview.geometry.attributes.color as THREE.BufferAttribute;
+    // önizleme yolun tamamını göstermez; teknik yeteneği arttıkça uzar
+    const n = Math.min(pts.length, Math.ceil(pts.length * Math.min(0.9, 0.55 + 0.07 * this.sk.tech)));
+    for (let i = 0; i < n; i++) { const q = pts[i], f = 1 - i / n * 0.75; pos.setXYZ(i, q.x, q.y, q.z); col.setXYZ(i, f, f, f * (this.power > 0.9 ? 0.5 : 1)); }
+    pos.needsUpdate = true; col.needsUpdate = true; this.preview.geometry.setDrawRange(0, n);
+    if (this.feed()) {
+      // buluşma noktası: top ile arkadaşının en çok yaklaşacağı yer. Turkuaz = pas ulaşır.
+      const lx = this.mTo.x - this.mx, lz = this.mTo.y - this.mz, ll = Math.hypot(lx, lz), lim = this.type === 'cross' ? 2.7 : 1.0; let best = 1e9, bx = this.mx, bz = this.mz;
+      for (const q of pts) { if (q.y > lim || q.t < 0.25) continue; const run = Math.min(ll, 6.8 * q.t), ax = this.mx + lx / ll * run, az = this.mz + lz / ll * run, dd = Math.hypot(q.x - ax, q.z - az); if (dd < best) { best = dd; bx = ax; bz = az; } }
+      const ok = best < (this.type === 'cross' ? 1.9 : 1.6), mm = this.meet.material as THREE.MeshBasicMaterial;
+      this.meet.visible = true; this.meet.position.set(bx, 0.045, bz); mm.color.setHex(ok ? 0x39f0c8 : 0xf4fff0); mm.opacity = ok ? 0.95 : 0.3; this.meet.scale.setScalar(ok ? 1 + 0.08 * Math.sin(this.clock * 12) : 0.8);
+    }
+  }
+
+  /** Büyük topun üstünde parmağı gezdirirken: yörünge anında güncellenir */
+  contactMove(cx: number, cy: number) { if (this.mode !== 'contact') return; const l = Math.hypot(cx, cy); if (l > 1) { cx /= l; cy /= l; } this.hit = { cx, cy }; }
+  /** Parmağı kaldırınca vuruş noktası kesinleşir ve koşu adımı başlar */
   contact(cx: number, cy: number) {
     if (this.mode !== 'contact') return;
+    this.contactMove(cx, cy);
     this.hooks.contact(false, 0, 0); this.hooks.prompt('', ''); this.hooks.power(0, false);
-    const l = Math.hypot(cx, cy); if (l > 1) { cx /= l; cy /= l; }
-    this.hit = { cx, cy }; this.mode = 'runup'; this.t = 0; this.pPhase = 0;
+    this.mode = 'runup'; this.t = 0; this.pPhase = 0; this.tapT = -1; this.hooks.timing(true, SWEET);
     this.sfx.rise(); this.sfx.crowd(0.6); this.world.excite(0.55);
   }
+  /** Koşu adımında ekrana dokunma: ayağın topa değdiği ana ne kadar yakınsa vuruş o kadar temiz */
+  tapStrike() { if (this.mode === 'runup' && this.tapT < 0) { this.tapT = this.t; vib(12); } }
   skipIntro() { if (this.mode === 'intro' && this.t > 0.25) this.t = 9; }
 
   /** Koşu adımının sonunda ayak topa değer */
   private strike() {
-    const { cx, cy } = this.hit, p = this.power, off = Math.min(1, Math.hypot(cx, cy));
-    const v = (9 + (20 + 1.6 * this.sk.power) * p) * (1 - 0.12 * off), th = clamp(0.13 - cy * (cy < 0 ? 0.33 : 0.115), 0.015, 0.5) * (0.6 + 0.4 * p);
-    // teknik: sert vuruşlarda yön biraz sapar, yetenek arttıkça azalır
-    const er = (Math.random() - 0.5) * 2 * Math.max(0.006, 0.042 - 0.007 * this.sk.tech) * p, d = this.aimDir.clone().rotateAround(new THREE.Vector2(), er), qx = -d.y, qz = d.x;
-    this.launch(d.x, d.y, v, th);
-    const k = -cx * (8 + 1.5 * this.sk.curve) * (0.35 + 0.65 * p); this.curve.set(qx * k, 0, qz * k); this.curveT = Math.abs(cx) > 0.12 ? 1.7 : 0;
+    this.hooks.timing(false, 0);
+    const { cx, cy } = this.hit, p = this.power, q = this.params(cx, cy);
+    // zamanlama: tam anında dokunduysan top sapmaz ve daha sert çıkar; yanlış anda dokunduysan bozuk vurursun
+    const off = this.tapT < 0 ? -1 : Math.abs(this.tapT - SWEET), perfect = off >= 0 && off < 0.075, bad = off >= 0.19;
+    const v = q.v * (perfect ? 1.06 : bad ? 0.9 : 1), spread = Math.max(0.006, 0.042 - 0.007 * this.sk.tech) * p * (perfect ? 0 : bad ? 2.6 : off >= 0 ? 0.6 : 1);
+    const er = (Math.random() - 0.5) * 2 * spread, d = this.aimDir.clone().rotateAround(new THREE.Vector2(), er), qx = -d.y, qz = d.x;
+    this.launch(d.x, d.y, v, q.th * (bad ? 1 + (Math.random() - 0.3) * 0.6 : 1));
+    this.curve.set(qx * q.k, 0, qz * q.k); this.curveT = q.k ? 1.7 : 0;
     this.kicker = 'player'; this.kickT = 0; this.byMate = false;
+    if (perfect) { this.hooks.popup('TAM VURUŞ!', 'perfect'); this.slow = 0.12; } else if (bad) this.hooks.popup('KÖTÜ TEMAS', 'warn');
     this.hooks.popup(Math.round(v * 3.6) + ' km/s', 'good');
-    this.hitstop = 0.06 + 0.05 * p; this.shake = 0.14 + 0.3 * p; this.sfx.strike(p); vib(30 + Math.round(60 * p));
-    this.fx.emit(this.ball.position.clone(), 0xffffff, 8 + Math.round(14 * p), 3 + 3 * p, 0.7, 0.4); this.fx.emit(this.ball.position.clone().setY(0.05), 0x8dff9f, 12, 3.5, 0.9, 0.5);
+    this.hitstop = (0.06 + 0.05 * p) * (perfect ? 1.6 : 1); this.shake = (0.14 + 0.3 * p) * (perfect ? 1.4 : 1); this.sfx.strike(perfect ? 1 : p * (bad ? 0.5 : 1)); vib(perfect ? [20, 30, 90] : 30 + Math.round(60 * p));
+    this.fx.emit(this.ball.position.clone(), perfect ? 0xffd23f : 0xffffff, 8 + Math.round(14 * p) + (perfect ? 16 : 0), 3 + 3 * p, 0.7, 0.4); this.fx.emit(this.ball.position.clone().setY(0.05), 0x8dff9f, 12, 3.5, 0.9, 0.5);
     this.planKeeper(v);
   }
 
@@ -247,7 +298,8 @@ export class Game {
 
     if (this.mode === 'runup' && this.t >= RUNUP) this.strike();
     if (this.mode === 'intro' && this.t > 1.9) { this.mode = 'aim'; this.hooks.prompt('', this.feed() ? 'Geri çek, arkadaşının önüne nişan al, bırak' : 'Geri çek, nişan al, bırak'); }
-    if (this.mode === 'contact' && this.t > this.contactTime) this.contact(0, 0);
+    if (this.mode === 'contact' && this.t > this.contactTime) this.contact(this.hit.cx, this.hit.cy);
+    this.drawPreview();
     if (this.mode === 'result' && this.t > 1.9) this.nextMoment();
     if (this.celT >= 0) { const o = this.celT; this.celT += dtReal; if (o < 1.15 && this.celT >= 1.15) this.camCut = true; }
     const bp = this.ball.position; this.ballShadow.position.set(bp.x, 0.017, bp.z); this.ballShadow.scale.setScalar(0.22 / (1 + bp.y * 0.5)); this.ballShadow.visible = this.ball.visible;
@@ -270,7 +322,7 @@ export class Game {
     // vuran oyuncu: açılı durur, koşu adımıyla topa gelir, vurup öne savrulur
     const aimed = (this.mode === 'aim' && this.aiming) || this.mode === 'contact' || this.mode === 'runup' || this.kickT < 3;
     const d = aimed ? this.aimDir : this.fwd, rx = -d.y, rz = d.x, sp = this.spot, P = this.player;
-    const sx = sp.x - d.x * 2.5 - rx * 0.95, sz = sp.z - d.y * 2.5 - rz * 0.95, lx = sp.x - d.x * 0.42 - rx * 0.24, lz = sp.z - d.y * 0.42 - rz * 0.24;
+    const sx = sp.x - d.x * 3.3 - rx * 1.15, sz = sp.z - d.y * 3.3 - rz * 1.15, lx = sp.x - d.x * 0.42 - rx * 0.24, lz = sp.z - d.y * 0.42 - rz * 0.24;
     let pp: Pose, rate = 14;
     if (this.celT >= 1.15 && this.kicker === 'player' && this.goals > 0 && this.results[this.results.length - 1] === 'goal') {
       // gol sevinci: kollar açık, kenara doğru koşu
@@ -281,7 +333,7 @@ export class Game {
       const u = clamp(this.t / RUNUP, 0, 1), e = Math.pow(u, 1.25), ph0 = this.pPhase; this.pPhase += dt * 15;
       this.ppx = sx + (lx - sx) * e; this.ppz = sz + (lz - sz) * e; P.baseYaw = Math.atan2(sp.x - this.ppx + d.x, sp.z - this.ppz + d.y);
       // son adımda vuruş ayağı geriye gerilir
-      pp = u < 0.72 ? runPose(this.pPhase, 0.95, 0.22) : pose({ pitch: 0.02, twist: -0.5, thR: -0.95, knR: 1.5, thL: 0.35, knL: 0.3, abL: 0.14, shL: 1.25, shR: -0.9, saL: 1.15, saR: 0.8, elL: 0.3, elR: 0.4 });
+      pp = u < 0.8 ? runPose(this.pPhase, 0.95, 0.22) : pose({ pitch: 0.02, twist: -0.5, thR: -0.95, knR: 1.5, thL: 0.35, knL: 0.3, abL: 0.14, shL: 1.25, shR: -0.9, saL: 1.15, saR: 0.8, elL: 0.3, elR: 0.4 });
       if (Math.sin(ph0) * Math.sin(this.pPhase) < 0) { this.sfx.step(); this.fx.emit(new THREE.Vector3(this.ppx, 0.05, this.ppz), 0x8dff9f, 4, 1.4, 0.7, 0.3); }
       rate = 26;
     } else if (this.kicker === 'player' && this.kickT < 3 && (this.mode === 'fly' || this.mode === 'result')) {
@@ -425,7 +477,7 @@ export class Game {
     if (!this.live) return; this.live = false;
     this.results.push('miss'); this.hooks.popup(text, 'warn'); this.sfx.crowd(0.12); this.world.excite(0.1);
     const bq = this.ball.position; if (text === 'KALECİ KURTARDI' || (text === 'AUT' && !this.hitPost && Math.abs(bq.x) < 5.6 && bq.y < 3.8 && bq.z < GZ + 2)) { this.sfx.ooh(); this.world.excite(0.5); }
-    this.mode = 'result'; this.t = 0; this.hooks.board(this.us, this.them, this.minutes[this.idx], this.rival, this.results);
+    this.mode = 'result'; this.t = 0.5; this.hooks.board(this.us, this.them, this.minutes[this.idx], this.rival, this.results);
   }
 
   // ---------- kaleci ----------

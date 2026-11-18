@@ -41,6 +41,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 0.56, 0.1, 400);
 const sfx = new Sfx(); sfx.enabled = save.sound;
 
+let ballId = -1;
 const hud = $('hud'), menu = $('menu'), how = $('how'), over = $('over'), pops = $('pops'), contactEl = $('contact'), promptEl = $('prompt');
 const game = new Game(scene, camera, sfx, {
   popup(text, kind) {
@@ -54,9 +55,10 @@ const game = new Game(scene, camera, sfx, {
   },
   card(big, small) { const c = $('card'); $('cBig').textContent = big; $('cSmall').textContent = small; c.hidden = false; c.style.animation = 'none'; void c.offsetWidth; c.style.animation = 'card 1.9s ease-out forwards'; },
   power(p, on) { const el = $('power'); el.hidden = !on; if (on) { $('pfill').style.transform = `scaleY(${p})`; el.classList.toggle('hot', p > 0.9); $('ppct').textContent = Math.round(p * 100) + ''; } },
+  timing(on, dur) { const el = $('timing'); el.hidden = !on; el.classList.remove('hit'); if (on) { const r = $('tring'); r.style.animation = 'none'; void r.offsetWidth; r.style.animation = `tring ${dur}s linear forwards`; } },
   prompt(title, text) { $('pTitle').textContent = title; $('pText').textContent = text; promptEl.hidden = !title && !text; },
   contact(on, time, drift) {
-    contactEl.hidden = !on; $('mark').hidden = true;
+    contactEl.hidden = !on; $('mark').hidden = true; if (!on) ballId = -1;
     if (on) {
       const r = $('ctime'); r.style.animation = 'none'; void r.offsetWidth; r.style.animation = `ctime ${time}s linear forwards`;
       const bb = $('bigball'); bb.style.setProperty('--drift', drift + 'px'); bb.style.animation = 'none'; void bb.offsetWidth; bb.style.animation = drift > 0.5 ? 'drift 1.1s ease-in-out infinite' : 'none';
@@ -103,7 +105,7 @@ new ResizeObserver(resize).observe(app); resize();
 // ---------- ekranlar ----------
 const level = () => (save.season - 1) * 3 + Math.floor(save.week / 2);
 function showMenu() {
-  game.toMenu(); $('card').hidden = true; $('power').hidden = true; menu.hidden = false; hud.hidden = true; how.hidden = true; over.hidden = true; promptEl.hidden = true; contactEl.hidden = true;
+  game.toMenu(); $('card').hidden = true; $('power').hidden = true; $('timing').hidden = true; menu.hidden = false; hud.hidden = true; how.hidden = true; over.hidden = true; promptEl.hidden = true; contactEl.hidden = true;
   view = { ...save.loadout }; applyLook(); renderAll();
 }
 function play() {
@@ -206,16 +208,24 @@ document.querySelectorAll<HTMLElement>('#tabs button').forEach(b => b.onclick = 
 // ---------- kontroller ----------
 // 1) Ekrana bas, geri çek (sapan gibi), bırak: yön ve güç.  2) Büyük topa dokun: vuruş noktası.
 let dragId = -1, dx0 = 0, dy0 = 0;
+app.addEventListener('pointerdown', () => { if (game.mode === 'runup') { game.tapStrike(); $('timing').classList.add('hit'); } }, true);
 canvas.addEventListener('pointerdown', e => { sfx.unlock(); if (game.mode === 'intro') { game.skipIntro(); return; } if (game.mode !== 'aim' || dragId >= 0) return; dragId = e.pointerId; dx0 = e.clientX; dy0 = e.clientY; });
 window.addEventListener('pointermove', e => { if (e.pointerId === dragId) game.aimDrag(e.clientX - dx0, e.clientY - dy0, app.clientHeight); });
 const end = (e: PointerEvent) => { if (e.pointerId !== dragId) return; dragId = -1; game.aimRelease(); };
 window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
 const bigBall = $('bigball');
-bigBall.addEventListener('pointerdown', e => {
-  e.preventDefault(); const r = bigBall.getBoundingClientRect(), cx = ((e.clientX - r.left) / r.width - 0.5) * 2, cy = -((e.clientY - r.top) / r.height - 0.5) * 2;
-  const m = $('mark'); m.style.left = (e.clientX - r.left) + 'px'; m.style.top = (e.clientY - r.top) + 'px'; m.hidden = false;
-  game.contact(cx, cy);
-});
+// büyük topta parmağı gezdir: yörünge canlı değişir; kaldırınca vuruş noktası kesinleşir
+let lcx = 0, lcy = 0;
+const onBall = (e: PointerEvent) => {
+  const r = bigBall.getBoundingClientRect(); lcx = ((e.clientX - r.left) / r.width - 0.5) * 2; lcy = -((e.clientY - r.top) / r.height - 0.5) * 2;
+  const l = Math.hypot(lcx, lcy); if (l > 1) { lcx /= l; lcy /= l; }
+  const m = $('mark'); m.style.left = (lcx * 0.5 + 0.5) * 100 + '%'; m.style.top = (-lcy * 0.5 + 0.5) * 100 + '%'; m.hidden = false;
+  game.contactMove(lcx, lcy);
+};
+bigBall.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (game.mode !== 'contact') return; ballId = e.pointerId; try { bigBall.setPointerCapture(e.pointerId); } catch { /* yakalanamazsa pencere olayları yeter */ } onBall(e); });
+window.addEventListener('pointermove', e => { if (e.pointerId === ballId) onBall(e); });
+const ballEnd = (e: PointerEvent) => { if (e.pointerId !== ballId) return; ballId = -1; game.contact(lcx, lcy); };
+window.addEventListener('pointerup', ballEnd); window.addEventListener('pointercancel', ballEnd);
 window.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && (game.mode === 'menu' || game.mode === 'done') && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); if (!how.hidden) $('howOk').click(); else play(); } });
 
 showMenu();
