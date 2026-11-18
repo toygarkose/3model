@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#070b22" />
+<meta name="description" content="SEYİR — 3B stadyumu gez, bir koltuğa tıkla ve etkinliği o koltuktan izle." />
+<title>SEYİR · Sanal Stadyum</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffd23f'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7.5' fill='none' stroke='%2314142b' stroke-width='4'/%3E%3Ccircle cx='23.5' cy='10.5' r='3.5' fill='%232f6bff' stroke='%2314142b' stroke-width='2'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/src/ui/style.css" />
+</head>
+<body>
+<canvas id="scene" tabindex="0" aria-label="3B stadyum sahnesi. Ok tuşlarıyla döndür, artı ve eksi ile yakınlaş."></canvas>
+
+<div id="loader" role="status" aria-live="polite">
+  <div class="loader-box">
+    <div class="logo logo-big"><span class="logo-mark" data-icon="logo"></span><span class="logo-text">SEYİR</span></div>
+    <p id="loader-text">Stadyum kuruluyor…</p>
+    <div class="loader-bar"><i id="loader-fill"></i></div>
+  </div>
+</div>
+
+<div id="fatal" hidden role="alert">
+  <div class="card fatal-box">
+    <h2 id="fatal-title">Bir sorun oluştu</h2>
+    <p id="fatal-text"></p>
+    <button class="btn btn-yellow" id="fatal-reload" type="button">Yeniden yükle</button>
+  </div>
+</div>
+
+<div id="ui" data-mode="intro" data-sheet="closed" data-tab="seat">
+  <header class="topbar">
+    <button class="logo" id="logo" type="button" title="SEYİR — stadyum görünümüne dön">
+      <span class="logo-mark" data-icon="logo"></span><span class="logo-text">SEYİR</span>
+    </button>
+    <nav class="pill" id="menu" aria-label="Etkinlik seçimi">
+      <span id="menu-events" class="pill-group" role="group" aria-label="Etkinlik türü"></span>
+      <button class="pill-btn pill-demo" id="btn-demo" type="button" title="Akışı hemen başlat"><span data-icon="play"></span><span>Demo</span></button>
+      <button class="pill-btn pill-icon" id="btn-help" type="button" aria-label="Yardım ve kısayollar"><span data-icon="help"></span></button>
+    </nav>
+    <div class="top-actions">
+      <button class="chip" id="btn-sound" type="button" aria-pressed="true" aria-label="Sesi aç/kapat"><span data-icon="sound"></span></button>
+      <button class="chip" id="btn-favs" type="button"><span data-icon="heart"></span><span class="chip-label">Favoriler</span><b class="count" id="fav-count">0</b></button>
+      <button class="chip" id="btn-tickets" type="button"><span data-icon="ticket"></span><span class="chip-label">Koltuklarım</span><b class="count" id="ticket-count">0</b></button>
+    </div>
+  </header>
+
+  <div class="hint" id="hint" role="status"><span data-icon="pointer"></span><span id="hint-text">Etkinliği oradan görmek için bir koltuğa tıkla</span></div>
+
+  <div id="panels">
+    <div class="sheet-tabs" role="tablist" aria-label="Paneller">
+      <button type="button" role="tab" data-tab="seat">Koltuk</button>
+      <button type="button" role="tab" data-tab="map">Bloklar</button>
+      <button type="button" role="tab" data-tab="event">Etkinlik</button>
+      <button type="button" role="tab" data-tab="camera">Kamera</button>
+    </div>
+
+    <section class="card card-event" data-tab="event" aria-label="Etkinlik bilgisi">
+      <div class="row between">
+        <span class="badge badge-dark" id="ev-badge">MAÇ</span>
+        <span class="phase" id="ev-phase" data-phase="countdown">GERİ SAYIM</span>
+      </div>
+      <h1 id="ev-title"></h1>
+      <p class="muted" id="ev-sub"></p>
+      <dl class="meta">
+        <div><dt>Tarih</dt><dd id="ev-date"></dd></div>
+        <div><dt>Saat</dt><dd id="ev-time"></dd></div>
+        <div><dt>Mekan</dt><dd id="ev-venue"></dd></div>
+      </dl>
+      <div class="livebox">
+        <b id="ev-headline"></b><span class="mono" id="ev-clock"></span>
+        <small id="ev-detail"></small>
+      </div>
+      <form id="video-form" hidden>
+        <label for="video-url">Dev ekran videosu (isteğe bağlı)</label>
+        <div class="row">
+          <input id="video-url" type="url" inputmode="url" placeholder="https://…/video.mp4" autocomplete="off" />
+          <button class="btn btn-small" type="submit">Uygula</button>
+        </div>
+      </form>
+      <p class="online" id="ev-online"><i></i><span id="ev-online-text">Yalnızca sen çevrim içisin</span></p>
+    </section>
+
+    <section class="card card-map" data-tab="map" aria-label="Blok haritası ve filtreler">
+      <div class="row between"><h2>Bloklar</h2><span class="mono tag" id="map-selected">—</span></div>
+      <svg id="blockmap" viewBox="-130 -100 260 200" role="application" tabindex="0" aria-label="Blok haritası. Ok tuşlarıyla blok seç, Enter ile kamerayı çevir."></svg>
+      <div class="filters">
+        <div class="seg" id="filter-tier" role="group" aria-label="Kat filtresi"></div>
+        <div class="range">
+          <label for="price-min">Fiyat <b class="mono" id="price-label"></b></label>
+          <div class="range-row">
+            <input id="price-min" type="range" aria-label="En düşük fiyat" />
+            <input id="price-max" type="range" aria-label="En yüksek fiyat" />
+          </div>
+        </div>
+        <p class="muted small" id="filter-count"></p>
+      </div>
+    </section>
+
+    <section class="card card-camera" data-tab="camera" aria-label="Kamera kontrolleri">
+      <div class="row between"><h2>Kamera</h2><span class="mono tag" id="cam-zoom">%0</span></div>
+      <div class="cam-row">
+        <svg id="cammap" viewBox="-130 -100 260 200" aria-hidden="true"></svg>
+        <div class="cam-buttons">
+          <button class="btn btn-icon" id="cam-in" type="button" aria-label="Yakınlaş"><span data-icon="plus"></span></button>
+          <button class="btn btn-icon" id="cam-out" type="button" aria-label="Uzaklaş"><span data-icon="minus"></span></button>
+          <button class="btn btn-icon" id="cam-reset" type="button" aria-label="Kamerayı sıfırla"><span data-icon="reset"></span></button>
+        </div>
+      </div>
+      <p class="muted small" id="cam-hint">Sürükle: döndür · Tekerlek: yakınlaş</p>
+    </section>
+
+    <section class="card card-seat" data-tab="seat" aria-label="Koltuk kartı">
+      <div id="seat-empty">
+        <h2>Koltuğunu seç</h2>
+        <p class="muted">Tribünden bir koltuğa tıkla; kamera oraya uçsun ve etkinliği o koltuktan gör.</p>
+        <button class="btn btn-yellow btn-wide" id="btn-suggest" type="button"><span data-icon="star"></span>En iyi boş koltuğu öner</button>
+      </div>
+      <div id="seat-body" hidden>
+        <div class="row between">
+          <span class="badge" id="seat-status" data-state="free">BOŞ</span>
+          <span class="row gap">
+            <button class="btn btn-icon btn-small" id="btn-fav" type="button" aria-pressed="false" aria-label="Favorilere ekle"><span data-icon="heart"></span></button>
+            <button class="btn btn-icon btn-small" id="btn-share" type="button" aria-label="Koltuk bağlantısını kopyala"><span data-icon="link"></span></button>
+          </span>
+        </div>
+        <h2 class="seat-title" id="seat-block"></h2>
+        <p class="muted" id="seat-tier"></p>
+        <dl class="stats">
+          <div><dt>Sıra</dt><dd id="seat-row"></dd></div>
+          <div><dt>Koltuk</dt><dd id="seat-num"></dd></div>
+          <div><dt>Fiyat</dt><dd id="seat-price"></dd></div>
+        </dl>
+        <div class="preview">
+          <canvas id="seat-preview" width="320" height="180" aria-label="Bu koltuktan görünüm"></canvas>
+          <div class="preview-wait" id="preview-wait">Görünüm hazırlanıyor…</div>
+          <div class="score"><span>Görüş</span><b class="mono" id="seat-score"></b></div>
+        </div>
+        <div class="scorebar" aria-hidden="true"><i id="seat-scorebar"></i></div>
+        <ul class="perks" id="seat-perks"></ul>
+        <div class="row gap cta">
+          <button class="btn btn-yellow grow" id="btn-buy" type="button">Koltuğu al</button>
+          <button class="btn" id="btn-go" type="button">Koltuktan izle</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="seatbar" id="seatbar" role="toolbar" aria-label="Koltuk görünümü araçları">
+    <button class="btn btn-blue" id="btn-back" type="button"><span data-icon="back"></span>Stadyuma dön</button>
+    <span class="seatbar-group" role="group" aria-label="Komşu koltuk">
+      <button class="btn btn-icon" id="nb-left" type="button" aria-label="Soldaki koltuk"><span data-icon="left"></span></button>
+      <button class="btn btn-icon" id="nb-up" type="button" aria-label="Arka sıra"><span data-icon="up"></span></button>
+      <button class="btn btn-icon" id="nb-down" type="button" aria-label="Ön sıra"><span data-icon="down"></span></button>
+      <button class="btn btn-icon" id="nb-right" type="button" aria-label="Sağdaki koltuk"><span data-icon="right"></span></button>
+    </span>
+    <span class="seatbar-group" role="group" aria-label="Tepkiler">
+      <button class="btn" id="re-applause" type="button" title="Alkış" aria-label="Alkış"><span data-icon="clap"></span><span class="lbl">Alkış</span></button>
+      <button class="btn" id="re-cheer" type="button" title="Tezahürat" aria-label="Tezahürat"><span data-icon="megaphone"></span><span class="lbl">Tezahürat</span></button>
+      <button class="btn" id="re-wave" type="button" title="Dalga" aria-label="Dalga"><span data-icon="wave"></span><span class="lbl">Dalga</span></button>
+    </span>
+    <span class="seatbar-group sound-group">
+      <button class="btn btn-icon" id="btn-sound2" type="button" aria-pressed="true" aria-label="Sesi aç/kapat"><span data-icon="sound"></span></button>
+      <input id="volume" type="range" min="0" max="100" value="70" aria-label="Ses seviyesi" />
+    </span>
+  </div>
+
+  <div class="tooltip" id="tooltip" hidden></div>
+  <div id="toasts" aria-live="polite"></div>
+</div>
+
+<dialog id="dlg" class="card dialog" aria-labelledby="dlg-title">
+  <div class="row between dlg-head"><h2 id="dlg-title"></h2><button class="btn btn-icon btn-small" id="dlg-close" type="button" aria-label="Kapat"><span data-icon="close"></span></button></div>
+  <div id="dlg-body"></div>
+</dialog>
+
+<noscript><p style="color:#fff;padding:24px;font-family:sans-serif">SEYİR'in çalışması için JavaScript gerekir.</p></noscript>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

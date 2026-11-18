@@ -1,0 +1,25 @@
+{
+  "name": "seyir-sanal-stadyum",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SEYİR — tarayıcıda çalışan sanal stadyum: koltuğunu seç, etkinliği oradan izle.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:single": "tsc --noEmit && vite build --config vite.single.config.ts",
+    "preview": "vite preview --port 4173 --strictPort",
+    "server": "node server/server.mjs",
+    "test": "npm run build && node tests/e2e.mjs"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vite-plugin-singlefile": "^2.3.0",
+    "ws": "^8.18.0"
+  }
+}
