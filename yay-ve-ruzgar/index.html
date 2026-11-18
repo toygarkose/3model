@@ -1,0 +1,624 @@
+<title>Yay ve Rüzgâr</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yeseva+One&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout: a shadow-theatre stage. Dark wooden frame bands top and bottom, the lit cloth screen (canvas) between them. */
+:root {
+  color-scheme: dark;
+  --ink: #170c07;        /* frame wood, puppet outlines */
+  --umber: #2a160c;      /* panels */
+  --amber: #d08a3c;      /* lamp light, accent */
+  --lamp: #f3cf8e;       /* brightest cloth */
+  --paper: #f7e7c6;      /* text on dark */
+  --muted: #b89a6e;      /* secondary text */
+  --teal: #2a9d95;       /* player Turna */
+  --nar: #d0454c;        /* player Nar */
+  --display: "Yeseva One", Georgia, "Times New Roman", serif;
+  --body: "Alegreya Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  background: var(--ink); color: var(--paper);
+  font-family: var(--body); font-size: 16px; line-height: 1.35;
+  display: flex; flex-direction: column; overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+}
+.band {
+  background: var(--ink);
+  padding-block: 8px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.band { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; border-bottom: 2px solid var(--amber); }
+.who { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.who.right { align-items: flex-end; text-align: right; }
+.who .name { font-family: var(--display); font-size: 18px; letter-spacing: .02em; white-space: nowrap; }
+.who .name small { font-family: var(--body); font-size: 13px; color: var(--muted); }
+.who.active .name::after { content: " ●"; color: var(--amber); font-size: 12px; }
+.hp { width: min(100%, 220px); height: 10px; background: var(--umber); border: 1px solid #5a3418; border-radius: 2px; overflow: hidden; }
+.hp i { display: block; height: 100%; width: 100%; transition: width .4s ease; }
+#hp0 i { background: var(--teal); }
+#hp1 i { background: var(--nar); margin-left: auto; }
+.mid { text-align: center; font-variant-numeric: tabular-nums; }
+.mid .wind { font-weight: 700; font-size: 15px; white-space: nowrap; }
+.mid .msg { font-size: 14px; color: var(--muted); min-height: 1.35em; white-space: nowrap; }
+
+#stage { position: relative; flex: 1; min-height: 0; background: var(--amber); }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+
+footer.band { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; border-top: 2px solid var(--amber); }
+.quiver { display: flex; gap: 6px; flex-wrap: wrap; }
+button {
+  font: 500 15px var(--body); color: var(--paper); background: var(--umber);
+  border: 1px solid #6b3f1d; border-radius: 3px; padding: 7px 12px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--amber); }
+button:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+button:disabled { opacity: .4; cursor: default; }
+button[aria-pressed="true"] { background: var(--amber); color: var(--ink); border-color: var(--amber); font-weight: 700; }
+button.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); font: 400 20px var(--display); padding: 10px 28px; }
+.readout { font-variant-numeric: tabular-nums; font-size: 15px; display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: center; }
+.readout b { font-size: 17px; }
+.readout .prev { color: var(--muted); }
+#mute { padding: 7px 10px; }
+
+.overlay {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(23, 12, 7, .55); overflow-y: auto;
+}
+.panel {
+  background: var(--ink); border: 2px solid var(--amber); border-radius: 4px;
+  padding: 24px 26px; width: min(100%, 460px); display: flex; flex-direction: column; gap: 16px;
+  margin: auto;
+}
+.panel h1 { font: 400 clamp(34px, 9vw, 52px)/1 var(--display); margin: 0; color: var(--lamp); text-wrap: balance; }
+.panel h2 { font: 400 30px/1.1 var(--display); margin: 0; color: var(--lamp); }
+.panel p { margin: 0; color: var(--paper); }
+.panel .label { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 6px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.how { margin: 0; padding-left: 18px; color: var(--paper); display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+@media (max-width: 520px) {
+  .who .name { font-size: 15px; }
+  .mid .wind { font-size: 13px; } .mid .msg { font-size: 12px; }
+  button { padding: 6px 9px; font-size: 14px; }
+  .panel { padding: 18px; }
+}
+</style>
+
+<header class="band">
+  <div class="who" id="who0"><span class="name">Turna</span><div class="hp" id="hp0"><i></i></div></div>
+  <div class="mid"><div class="wind" id="wind">Rüzgâr</div><div class="msg" id="msg">&nbsp;</div></div>
+  <div class="who right" id="who1"><span class="name">Nar</span><div class="hp" id="hp1"><i></i></div></div>
+</header>
+
+<div id="stage">
+  <canvas id="c" aria-label="Oyun sahnesi"></canvas>
+
+  <div class="overlay" id="menu">
+    <div class="panel">
+      <h1>Yay ve Rüzgâr</h1>
+      <p>Gölge perdesinde iki okçu, aralarında tepeler. Rakibini göremezsin; açıyı ve gücü rüzgâra göre kestirip atarsın.</p>
+      <div>
+        <div class="label">Rakip</div>
+        <div class="seg" id="modes">
+          <button data-mode="easy" aria-pressed="false">Bilgisayar · Kolay</button>
+          <button data-mode="medium" aria-pressed="true">Bilgisayar · Orta</button>
+          <button data-mode="hard" aria-pressed="false">Bilgisayar · Zor</button>
+          <button data-mode="pvp" aria-pressed="false">İki kişi</button>
+        </div>
+      </div>
+      <ul class="how">
+        <li>Perdeye basıp geriye çek, bırakınca ok çıkar. Klavyede: ok tuşları ve boşluk.</li>
+        <li>Kafa 45, gövde 28, bacak 16 can götürür.</li>
+        <li>Ağır ok rüzgârdan az etkilenir ve sert vurur. Üçlü ok yelpaze gibi açılır.</li>
+        <li>Havadaki feneri vuran 20 can kazanır.</li>
+      </ul>
+      <div class="row"><button class="primary" id="start">Perdeyi aç</button></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="over" hidden>
+    <div class="panel">
+      <h2 id="overTitle">Kazandı</h2>
+      <p id="overText"></p>
+      <div class="row">
+        <button class="primary" id="again">Yeniden oyna</button>
+        <button id="toMenu">Rakip değiştir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="band">
+  <div class="quiver" id="quiver">
+    <button data-type="normal" id="q-normal" aria-pressed="true">Düz ∞</button>
+    <button data-type="heavy" id="q-heavy" aria-pressed="false">Ağır 3</button>
+    <button data-type="triple" id="q-triple" aria-pressed="false">Üçlü 2</button>
+  </div>
+  <div class="readout">
+    <span>Açı <b id="rAng">45°</b></span>
+    <span>Güç <b id="rPow">60</b></span>
+    <span class="prev" id="rPrev"></span>
+    <button id="mute" aria-pressed="false" title="Sesi aç/kapat">Ses açık</button>
+  </div>
+</footer>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const canvas = $('c'), ctx = canvas.getContext('2d'), stage = $('stage');
+const css = getComputedStyle(document.documentElement);
+const C = n => css.getPropertyValue(n).trim();
+const INK = C('--ink'), TEAL = C('--teal'), NAR = C('--nar'), LAMP = C('--lamp');
+
+// ---------- constants ----------
+const W = 2400, FLOOR = 600, STEP = 4, GRAV = 520, WIND_A = 8;
+const DMG = { head: 45, torso: 28, legs: 16 };
+const ZONE_TR = { head: 'Kafadan', torso: 'Gövdeden', legs: 'Bacaktan' };
+const TYPES = { normal: { mult: 1, wind: 1 }, heavy: { mult: 1.4, wind: 0.35 }, triple: { mult: 0.6, wind: 1 } };
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const gauss = () => (Math.random() + Math.random() + Math.random() + Math.random() - 2) * 0.87;
+
+// ---------- state ----------
+let terrain = [], trees = [], bgPhase = [0, 0];
+let archers = [], arrows = [], stuck = [], scraps = [], texts = [];
+let lantern = null, wind = 0, turn = 0, state = 'menu', timer = 0, time = 0;
+let mode = 'medium', arrowType = 'normal', drag = null, ai = null, shotResult = null;
+let cam = { x: 0, y: 0 }, view = { w: 800, h: 600, s: 1, cw: 800, ch: 600 };
+
+// ---------- sound ----------
+let actx = null, muted = false;
+function tone(freq, to, dur, type, vol) {
+  if (muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch (e) { /* audio unavailable */ }
+}
+const sfx = {
+  twang: () => tone(520, 140, 0.22, 'triangle', 0.25),
+  thud: () => tone(140, 50, 0.12, 'square', 0.12),
+  hit: () => { tone(300, 80, 0.2, 'sawtooth', 0.18); tone(900, 400, 0.1, 'triangle', 0.1); },
+  ding: () => { tone(880, 1320, 0.3, 'sine', 0.2); },
+  win: () => { tone(440, 880, 0.5, 'triangle', 0.2); }
+};
+
+// ---------- world ----------
+function ground(x) {
+  const f = clamp(x / STEP, 0, terrain.length - 1), i = Math.floor(f), j = Math.min(i + 1, terrain.length - 1);
+  return terrain[i] + (terrain[j] - terrain[i]) * (f - i);
+}
+function genWorld() {
+  const p = [rand(0, 6), rand(0, 6), rand(0, 6)], hillH = rand(40, 170), hillX = W / 2 + rand(-220, 220), hillW = rand(200, 320);
+  const raw = x => 470 - 30 * Math.sin(x * 0.004 + p[0]) - 18 * Math.sin(x * 0.011 + p[1]) - 9 * Math.sin(x * 0.023 + p[2])
+    - hillH * Math.exp(-(((x - hillX) / hillW) ** 2));
+  const pads = [330, W - 330].map(x => ({ x, y: raw(x) }));
+  terrain = [];
+  for (let x = 0; x <= W; x += STEP) {
+    let y = raw(x);
+    for (const pad of pads) {
+      const d = Math.abs(x - pad.x);
+      if (d < 130) { const t = clamp((d - 55) / 75, 0, 1), s = t * t * (3 - 2 * t); y = pad.y + (y - pad.y) * s; }
+    }
+    terrain.push(y);
+  }
+  trees = [];
+  for (let i = 0; i < 16; i++) {
+    const x = rand(40, W - 40);
+    if (pads.some(pd => Math.abs(x - pd.x) < 150)) continue;
+    trees.push({ x, h: rand(46, 110), w: rand(9, 15) });
+  }
+  bgPhase = [rand(0, 6), rand(0, 6)];
+  return pads;
+}
+function makeArcher(i, pad, isAI) {
+  return { i, x: pad.x, y: pad.y, dir: i === 0 ? 1 : -1, hp: 100, name: i === 0 ? 'Turna' : 'Nar', color: i === 0 ? TEAL : NAR,
+    elev: 45, power: 60, last: null, quiver: { normal: Infinity, heavy: 3, triple: 2 }, isAI, stuck: [], wobble: 0, fall: 0, dead: false, pull: 0, shots: 0 };
+}
+function spawnLantern() { lantern = { x: W / 2 + rand(-260, 260), y: rand(120, 230), ph: rand(0, 6), wait: 0 }; }
+
+function newGame() {
+  const pads = genWorld();
+  archers = [makeArcher(0, pads[0], false), makeArcher(1, pads[1], mode !== 'pvp')];
+  arrows = []; stuck = []; scraps = []; texts = []; drag = null; ai = null;
+  spawnLantern();
+  wind = Math.round(rand(-6, 6)); turn = Math.random() < 0.5 ? 0 : 1;
+  if (mode !== 'pvp') turn = 0;
+  cam.x = camTargetX(); cam.y = FLOOR - view.h;
+  $('menu').hidden = true; $('over').hidden = true;
+  beginTurn(true);
+  syncHud();
+}
+function beginTurn(first) {
+  const sh = archers[turn];
+  arrowType = 'normal'; sh.pull = 0;
+  state = 'pan'; timer = first ? 0.6 : 1.0;
+  setMsg(sh.isAI ? `${sh.name} nişan alıyor` : `Sıra ${sh.name}'da`);
+  syncHud();
+}
+function nextTurn() {
+  turn ^= 1;
+  wind = clamp(wind + Math.round(rand(-4, 4)), -10, 10);
+  if (lantern.wait > 0 && --lantern.wait === 0) spawnLantern();
+  beginTurn(false);
+}
+
+// ---------- arrows ----------
+function makeArrow(sh, elevDeg, power, type) {
+  const r = elevDeg * Math.PI / 180, v = 250 + power * 9, cx = Math.cos(r) * sh.dir, sy = -Math.sin(r);
+  return { x: sh.x + cx * 26, y: sh.y - 66 + sy * 26, vx: cx * v, vy: sy * v, type, owner: sh.i, age: 0, live: true };
+}
+function stepArrow(a, dt) {
+  a.vx += wind * WIND_A * TYPES[a.type].wind * dt; a.vy += GRAV * dt;
+  a.x += a.vx * dt; a.y += a.vy * dt; a.age += dt;
+}
+function zoneAt(t, x, y) {
+  const lx = x - t.x, ly = y - t.y;
+  if (Math.hypot(lx, ly + 86) < 12) return 'head';
+  if (Math.abs(lx) < 12 && ly > -75 && ly <= -34) return 'torso';
+  if (Math.abs(lx) < 10 && ly > -34 && ly <= 0) return 'legs';
+  return null;
+}
+function fire(sh, type) {
+  if (sh.quiver[type] <= 0) type = 'normal';
+  sh.quiver[type]--; sh.last = { elev: sh.elev, power: sh.power }; sh.shots++;
+  const offs = type === 'triple' ? [-3, 0, 3] : [0];
+  arrows = offs.map(o => makeArrow(sh, sh.elev + o, sh.power, type));
+  shotResult = { hits: [], lantern: false };
+  sh.pull = 0; state = 'flight'; drag = null;
+  sfx.twang(); setMsg('Ok havada'); syncHud();
+}
+function burst(x, y, color, n) {
+  if (reduceMotion) n = Math.min(n, 4);
+  for (let i = 0; i < n; i++) scraps.push({ x, y, vx: rand(-160, 160), vy: rand(-260, -40), r: rand(0, 6), vr: rand(-8, 8), s: rand(3, 7), life: rand(0.7, 1.4), color });
+}
+function floatText(x, y, str, color) { texts.push({ x, y, str, color, life: 1.6 }); }
+
+function updateArrow(a, dt) {
+  const speed = Math.hypot(a.vx, a.vy), n = Math.max(1, Math.ceil(speed * dt / 4)), h = dt / n;
+  for (let k = 0; k < n && a.live; k++) {
+    stepArrow(a, h);
+    const ang = Math.atan2(a.vy, a.vx);
+    if (lantern.wait === 0 && Math.hypot(a.x - lantern.x, a.y - lanternY()) < 17) {
+      const sh = archers[a.owner]; sh.hp = Math.min(100, sh.hp + 20);
+      burst(lantern.x, lanternY(), LAMP, 18); floatText(lantern.x, lanternY() - 24, '+20 can', LAMP);
+      lantern.wait = 2; shotResult.lantern = true; sfx.ding(); syncHud();
+    }
+    for (const t of archers) {
+      if (t.dead || (t.i === a.owner && a.age < 0.3)) continue;
+      const z = zoneAt(t, a.x, a.y);
+      if (z) {
+        const dmg = Math.round(DMG[z] * TYPES[a.type].mult);
+        t.hp = Math.max(0, t.hp - dmg); t.wobble = 1;
+        t.stuck.push({ dx: a.x - t.x, dy: a.y - t.y, ang, type: a.type });
+        burst(a.x, a.y, t.color, 14); floatText(t.x, t.y - 120, `${ZONE_TR[z]} −${dmg}`, t.color);
+        shotResult.hits.push({ who: t.i, zone: z, dmg });
+        if (t.hp <= 0) { t.dead = true; }
+        a.live = false; sfx.hit(); syncHud(); return;
+      }
+    }
+    if (a.x >= 0 && a.x <= W && a.y >= ground(a.x)) {
+      stuck.push({ x: a.x, y: a.y, ang, type: a.type }); if (stuck.length > 40) stuck.shift();
+      a.live = false; sfx.thud(); return;
+    }
+    if (a.x < -300 || a.x > W + 300 || a.y > FLOOR + 200) { a.live = false; return; }
+  }
+}
+const lanternY = () => lantern.y + Math.sin(time * 1.3 + lantern.ph) * 14;
+
+// ---------- AI ----------
+function simMiss(sh, elev, power, type, tx, ty) {
+  const a = makeArrow(sh, elev, power, type);
+  for (let i = 0; i < 1500; i++) {
+    const px = a.x, py = a.y; stepArrow(a, 1 / 120);
+    if ((a.x - tx) * sh.dir >= 0) { const t = (tx - px) / (a.x - px || 1e-6); return py + (a.y - py) * t - ty; }
+    if (a.y >= ground(a.x) || a.x < -300 || a.x > W + 300) return 999;
+  }
+  return 999;
+}
+function aiPlan(sh) {
+  const tgt = archers[sh.i ^ 1], tx = tgt.x, ty = tgt.y - 58;
+  const type = sh.quiver.heavy > 0 && Math.abs(wind) >= 6 ? 'heavy' : (sh.quiver.triple > 0 && sh.shots >= 2 && Math.random() < 0.35 ? 'triple' : 'normal');
+  let best = { elev: 45, power: 78 };
+  for (const e of [rand(38, 52), 56, 34, 64, 70]) {
+    let lo = 5, hi = 100, r = 999;
+    for (let k = 0; k < 16; k++) { const mid = (lo + hi) / 2; r = simMiss(sh, e, mid, type, tx, ty); if (r > 0) lo = mid; else hi = mid; }
+    if (Math.abs(r) < 15) { best = { elev: e, power: (lo + hi) / 2 }; break; }
+  }
+  const base = { easy: 7, medium: 3.6, hard: 1.5 }[mode] || 3.6, sig = base * Math.max(0.35, Math.pow(0.8, sh.shots));
+  return { elev: clamp(best.elev + gauss() * sig * 0.6, 5, 85), power: clamp(best.power + gauss() * sig, 5, 100), type };
+}
+
+// ---------- HUD ----------
+function setMsg(s) { $('msg').textContent = s; }
+function syncHud() {
+  if (!archers.length) return;
+  archers.forEach((a, i) => {
+    $('hp' + i).firstElementChild.style.width = a.hp + '%';
+    $('who' + i).classList.toggle('active', state !== 'over' && state !== 'menu' && turn === i);
+    $('who' + i).querySelector('.name').innerHTML = a.name + (a.isAI ? ' <small>bilgisayar</small>' : '') + ` <small>${a.hp}</small>`;
+  });
+  const w = Math.abs(wind);
+  $('wind').textContent = w === 0 ? 'Rüzgâr yok' : (wind < 0 ? `← Rüzgâr ${w}` : `Rüzgâr ${w} →`);
+  const sh = archers[turn], human = !sh.isAI && state === 'aim';
+  for (const t of ['normal', 'heavy', 'triple']) {
+    const b = $('q-' + t), n = sh.quiver[t];
+    b.textContent = { normal: 'Düz', heavy: 'Ağır', triple: 'Üçlü' }[t] + ' ' + (n === Infinity ? '∞' : n);
+    b.disabled = !human || n <= 0; b.setAttribute('aria-pressed', String(arrowType === t));
+  }
+  $('rAng').textContent = Math.round(sh.elev) + '°'; $('rPow').textContent = Math.round(sh.power);
+  $('rPrev').textContent = sh.last && !sh.isAI ? `önceki ${Math.round(sh.last.elev)}° · ${Math.round(sh.last.power)}` : '';
+}
+
+// ---------- update ----------
+function camTargetX() {
+  if (view.w >= W + 200) return (W - view.w) / 2;
+  let cx;
+  if (state === 'menu') cx = W / 2 + Math.sin(time * 0.12) * (W / 2 - 300);
+  else if (state === 'flight' || state === 'settle') { const a = arrows.find(a => a.live) || arrows[arrows.length - 1]; cx = a ? a.x : archers[turn].x; }
+  else { const sh = archers[turn]; cx = sh.x + sh.dir * view.w * 0.25; }
+  return clamp(cx - view.w / 2, -100, W + 100 - view.w);
+}
+function update(dt) {
+  time += dt;
+  if (state === 'pan') {
+    if ((timer -= dt) <= 0) {
+      const sh = archers[turn];
+      if (sh.isAI) { ai = { plan: aiPlan(sh), t: 0 }; arrowType = ai.plan.type; sh.elev = ai.plan.elev; sh.power = 0; state = 'ai'; }
+      else { state = 'aim'; setMsg(`${sh.name}: çek ve bırak`); }
+      syncHud();
+    }
+  } else if (state === 'ai') {
+    const sh = archers[turn]; ai.t += dt;
+    const k = clamp((ai.t - 0.4) / 0.9, 0, 1);
+    sh.power = ai.plan.power * k; sh.pull = k; syncHud();
+    if (ai.t > 1.6) { sh.power = ai.plan.power; fire(sh, ai.plan.type); }
+  } else if (state === 'flight') {
+    for (const a of arrows) if (a.live) updateArrow(a, dt);
+    if (!arrows.some(a => a.live)) {
+      state = 'settle'; timer = 1.3;
+      const r = shotResult;
+      setMsg(r.hits.length ? r.hits.map(h => `${archers[h.who].name} ${ZONE_TR[h.zone].toLowerCase()} vuruldu`).join(', ') : (r.lantern ? 'Fener vuruldu' : 'Iska'));
+    }
+  } else if (state === 'settle') {
+    if ((timer -= dt) <= 0) {
+      const dead = archers.filter(a => a.dead);
+      if (dead.length) endGame(dead); else nextTurn();
+    }
+  }
+  for (const a of archers) {
+    a.wobble = Math.max(0, a.wobble - dt * 1.8);
+    if (a.dead) a.fall = Math.min(1, a.fall + dt * 1.6);
+  }
+  for (const s of scraps) { s.vy += 500 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.r += s.vr * dt; s.life -= dt; }
+  scraps = scraps.filter(s => s.life > 0);
+  for (const t of texts) { t.y -= 26 * dt; t.life -= dt; }
+  texts = texts.filter(t => t.life > 0);
+
+  const tx = camTargetX(); let ty = FLOOR - view.h;
+  const lead = state === 'flight' ? arrows.find(a => a.live) : null;
+  if (lead && lead.y < ty + 90) ty = lead.y - 90;
+  const k = 1 - Math.exp(-dt * (state === 'flight' ? 7 : 3.2));
+  cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+}
+function endGame(dead) {
+  state = 'over';
+  const both = dead.length === 2, winner = both ? null : archers[dead[0].i ^ 1];
+  $('overTitle').textContent = both ? 'Berabere' : `${winner.name} kazandı`;
+  $('overText').textContent = both ? 'İki kukla da perdeden düştü.' :
+    `${winner.shots} atışta bitti, ${winner.hp} can kaldı.` + (winner.isAI ? ' Bir dahaki sefere rüzgârı daha iyi oku.' : '');
+  $('over').hidden = false; setMsg('Perde kapandı'); sfx.win(); syncHud();
+  $('again').focus();
+}
+
+// ---------- drawing ----------
+let weave = null;
+function makeWeave() {
+  const p = document.createElement('canvas'); p.width = p.height = 6; const g = p.getContext('2d');
+  g.fillStyle = 'rgba(60,25,5,.10)'; g.fillRect(0, 0, 6, 1); g.fillRect(0, 0, 1, 6);
+  g.fillStyle = 'rgba(255,240,200,.06)'; g.fillRect(3, 0, 1, 6);
+  weave = ctx.createPattern(p, 'repeat');
+}
+function drawArrowShape(x, y, ang, type, alpha) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.globalAlpha = alpha == null ? 1 : alpha;
+  const heavy = type === 'heavy';
+  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = heavy ? 3.2 : 2;
+  ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(0, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(3, 0); ctx.lineTo(-7, heavy ? -5 : -3.5); ctx.lineTo(-7, heavy ? 5 : 3.5); ctx.closePath(); ctx.fill();
+  ctx.lineWidth = 1.4; ctx.beginPath();
+  for (const fx of [-34, -30, -26]) { ctx.moveTo(fx, 0); ctx.lineTo(fx - 5, -4); ctx.moveTo(fx, 0); ctx.lineTo(fx - 5, 4); }
+  ctx.stroke(); ctx.restore();
+}
+function drawArcher(a) {
+  const aiming = (state === 'aim' || state === 'ai' || state === 'pan') && archers[turn] === a && !a.dead;
+  const elev = (aiming ? a.elev : 18) * Math.PI / 180, pull = aiming ? a.pull : 0;
+  ctx.save(); ctx.translate(a.x, a.y);
+  ctx.rotate(-a.dir * a.fall * a.fall * Math.PI / 2 + Math.sin(time * 30) * a.wobble * 0.12);
+  for (const s of a.stuck) drawArrowShape(s.dx, s.dy, s.ang, s.type);
+  ctx.scale(a.dir, 1);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.lineWidth = 2.2;
+  ctx.globalAlpha = 0.88; ctx.fillStyle = a.color;
+  // şalvar
+  ctx.beginPath(); ctx.moveTo(-10, -36); ctx.lineTo(10, -36); ctx.quadraticCurveTo(17, -14, 9, -3); ctx.lineTo(13, 0); ctx.lineTo(3, 0);
+  ctx.lineTo(0, -16); ctx.lineTo(-3, 0); ctx.lineTo(-13, 0); ctx.lineTo(-9, -3); ctx.quadraticCurveTo(-17, -14, -10, -36); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // tunic
+  ctx.beginPath(); ctx.moveTo(-9, -75); ctx.lineTo(9, -75); ctx.lineTo(12, -34); ctx.lineTo(-12, -34); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = INK; ctx.fillRect(-12, -42, 24, 5);
+  // head
+  ctx.fillStyle = '#c9803a'; ctx.beginPath(); ctx.arc(0, -86, 11, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -89); ctx.lineTo(16, -85); ctx.lineTo(10, -83); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = a.color;
+  if (a.i === 0) { ctx.beginPath(); ctx.moveTo(-12, -93); ctx.lineTo(12, -93); ctx.lineTo(-2, -122); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.ellipse(0, -100, 15, 10, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -111, 4, 0, 7); ctx.fill(); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  // punched holes letting the lamp through
+  ctx.fillStyle = LAMP;
+  for (const [hx, hy] of [[0, -66], [-4, -56], [4, -56], [0, -48], [-6, -22], [6, -22]]) { ctx.beginPath(); ctx.arc(hx, hy, 1.7, 0, 7); ctx.fill(); }
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(5, -88, 1.6, 0, 7); ctx.fill();
+  // bow and arms
+  const sx = 0, sy = -66, ux = Math.cos(elev), uy = -Math.sin(elev);
+  const hx = sx + ux * 24, hy = sy + uy * 24, px = sx + ux * (22 - pull * 18), py = sy + uy * (22 - pull * 18);
+  const nx = -uy, ny = ux, bend = 9 + pull * 7, R = 27;
+  const t1x = hx + nx * R - ux * bend, t1y = hy + ny * R - uy * bend, t2x = hx - nx * R - ux * bend, t2y = hy - ny * R - uy * bend;
+  ctx.lineWidth = 4; ctx.strokeStyle = INK;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(hx, hy); ctx.moveTo(sx - 2, sy + 1); ctx.lineTo(px - ux * 6, py - uy * 6 + 4); ctx.lineTo(px, py); ctx.stroke();
+  ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(t1x, t1y); ctx.quadraticCurveTo(hx + ux * 9, hy + uy * 9, t2x, t2y); ctx.stroke();
+  ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(t1x, t1y); ctx.lineTo(px, py); ctx.lineTo(t2x, t2y); ctx.stroke();
+  if (aiming) { const tipx = px + ux * 34, tipy = py + uy * 34; ctx.restore(); ctx.save(); ctx.translate(a.x, a.y);
+    drawArrowShape(a.dir * tipx, tipy, Math.atan2(uy, ux * a.dir), arrowType); }
+  ctx.restore();
+}
+function drawPennant(a) {
+  const x = a.x - a.dir * 44, y0 = ground(x) + 4, top = y0 - 120, len = 14 + Math.abs(wind) * 6, sgn = wind === 0 ? 0 : Math.sign(wind);
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, top); ctx.stroke();
+  ctx.fillStyle = a.color; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(x, top);
+  const N = 8, amp = reduceMotion ? 0 : 3;
+  for (let i = 1; i <= N; i++) { const t = i / N; ctx.lineTo(x + sgn * len * t, top + (sgn === 0 ? len * t : Math.sin(time * 7 - t * 5) * amp * t + t * 3)); }
+  for (let i = N; i >= 0; i--) { const t = i / N; ctx.lineTo(x + sgn * len * t + (sgn === 0 ? 7 * (1 - t) : 0), top + 12 * (1 - t * 0.6) + (sgn === 0 ? len * t : Math.sin(time * 7 - t * 5) * amp * t + t * 3)); }
+  ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1.5; ctx.stroke();
+}
+function draw() {
+  const { cw, ch, s } = view;
+  ctx.setTransform(devicePixelRatio > 2 ? 2 : devicePixelRatio, 0, 0, devicePixelRatio > 2 ? 2 : devicePixelRatio, 0, 0);
+  // lit cloth
+  const fl = reduceMotion ? 0 : Math.sin(time * 9) * 0.008 + Math.sin(time * 23) * 0.005;
+  const g = ctx.createRadialGradient(cw / 2, ch * 0.62, 10, cw / 2, ch * 0.62, Math.max(cw, ch) * (0.75 + fl));
+  g.addColorStop(0, '#fbe3ae'); g.addColorStop(0.35, '#f0c079'); g.addColorStop(0.75, '#c97f37'); g.addColorStop(1, '#7c411b');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, cw, ch);
+
+  ctx.save(); ctx.scale(s, s);
+  // distant paper hills (parallax)
+  [[0.25, 'rgba(150,80,30,.28)', 360, 46, 0.0031], [0.5, 'rgba(96,46,16,.42)', 420, 34, 0.0052]].forEach(([par, col, base, amp, fq], li) => {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, view.h);
+    for (let sx = 0; sx <= view.w + 8; sx += 8) {
+      const wx = sx + cam.x * par;
+      ctx.lineTo(sx, base - (cam.y - (FLOOR - view.h)) * par * 0.4 + (view.h - 600) + Math.sin(wx * fq + bgPhase[li]) * amp + Math.sin(wx * fq * 2.7 + li) * amp * 0.35);
+    }
+    ctx.lineTo(view.w, view.h); ctx.closePath(); ctx.fill();
+  });
+  ctx.translate(-cam.x, -cam.y);
+  // cypresses
+  ctx.fillStyle = '#24120a';
+  for (const t of trees) { const y = ground(t.x) + 6; ctx.beginPath(); ctx.moveTo(t.x, y - t.h); ctx.bezierCurveTo(t.x + t.w, y - t.h * 0.6, t.x + t.w, y - 10, t.x, y); ctx.bezierCurveTo(t.x - t.w, y - 10, t.x - t.w, y - t.h * 0.6, t.x, y - t.h); ctx.fill(); }
+  // lantern
+  if (lantern && lantern.wait === 0) {
+    const ly = lanternY(); ctx.strokeStyle = INK; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(lantern.x, ly + 15); ctx.quadraticCurveTo(lantern.x + Math.sin(time * 2) * 6, ly + 34, lantern.x - 3, ly + 50); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,246,214,.95)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lantern.x - 9, ly - 15); ctx.lineTo(lantern.x + 9, ly - 15); ctx.lineTo(lantern.x + 14, ly); ctx.lineTo(lantern.x + 8, ly + 15); ctx.lineTo(lantern.x - 8, ly + 15); ctx.lineTo(lantern.x - 14, ly); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(lantern.x - 14, ly); ctx.lineTo(lantern.x + 14, ly); ctx.stroke();
+  }
+  if (archers.length) archers.forEach(drawPennant);
+  // terrain
+  const x0 = clamp(Math.floor(cam.x / STEP) - 1, 0, terrain.length - 1), x1 = clamp(Math.ceil((cam.x + view.w) / STEP) + 1, 0, terrain.length - 1);
+  if (terrain.length) {
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(cam.x - 400, FLOOR + 400); ctx.lineTo(cam.x - 400, terrain[x0]);
+    for (let i = x0; i <= x1; i++) ctx.lineTo(i * STEP, terrain[i]);
+    ctx.lineTo(cam.x + view.w + 400, terrain[x1]); ctx.lineTo(cam.x + view.w + 400, FLOOR + 400); ctx.closePath(); ctx.fill();
+  }
+  for (const a of stuck) drawArrowShape(a.x, a.y, a.ang, a.type);
+  archers.forEach(drawArcher);
+  for (const a of arrows) if (a.live) drawArrowShape(a.x, a.y, Math.atan2(a.vy, a.vx), a.type);
+  for (const p of scraps) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.globalAlpha = clamp(p.life * 1.5, 0, 1); ctx.fillStyle = p.color; ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.7); ctx.restore(); }
+  ctx.textAlign = 'center';
+  for (const t of texts) {
+    ctx.globalAlpha = clamp(t.life, 0, 1); ctx.font = `${Math.max(22, 18 / s)}px "Yeseva One", Georgia, serif`;
+    ctx.lineWidth = 5; ctx.strokeStyle = INK; ctx.strokeText(t.str, t.x, t.y); ctx.fillStyle = LAMP; ctx.fillText(t.str, t.x, t.y);
+  }
+  ctx.globalAlpha = 1; ctx.restore();
+
+  // drag guide (screen space)
+  if (drag && state === 'aim') {
+    ctx.strokeStyle = 'rgba(23,12,7,.75)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.moveTo(drag.sx, drag.sy); ctx.lineTo(drag.x, drag.y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(drag.sx, drag.sy, 5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(drag.x, drag.y, 9, 0, 7); ctx.stroke();
+  }
+  // weave + vignette
+  ctx.fillStyle = weave; ctx.fillRect(0, 0, cw, ch);
+  const v = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.45, cw / 2, ch / 2, Math.max(cw, ch) * 0.8);
+  v.addColorStop(0, 'rgba(23,12,7,0)'); v.addColorStop(1, 'rgba(23,12,7,.55)');
+  ctx.fillStyle = v; ctx.fillRect(0, 0, cw, ch);
+}
+
+// ---------- input ----------
+function canAim() { return state === 'aim' && !archers[turn].isAI; }
+function ptr(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+canvas.addEventListener('pointerdown', e => {
+  if (!canAim()) return;
+  const p = ptr(e); drag = { sx: p.x, sy: p.y, x: p.x, y: p.y, len: 0 };
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  e.preventDefault();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag || !canAim()) return;
+  const p = ptr(e), sh = archers[turn]; drag.x = p.x; drag.y = p.y;
+  const dx = drag.sx - p.x, dy = drag.sy - p.y, len = Math.hypot(dx, dy), full = Math.min(220, Math.min(view.cw, view.ch) * 0.45);
+  drag.len = len;
+  if (len > 6) {
+    sh.elev = clamp(Math.atan2(-dy, dx * sh.dir) * 180 / Math.PI, -15, 105);
+    sh.power = clamp(len / full * 100, 0, 100); sh.pull = sh.power / 100; syncHud();
+  }
+});
+function release(e, cancel) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (!canAim()) return;
+  const sh = archers[turn];
+  if (cancel || d.len < 14) { sh.pull = 0; if (sh.last) { sh.elev = sh.last.elev; sh.power = sh.last.power; } syncHud(); return; }
+  fire(sh, arrowType);
+}
+canvas.addEventListener('pointerup', e => release(e, false));
+canvas.addEventListener('pointercancel', e => release(e, true));
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  if (!canAim()) return;
+  const sh = archers[turn], big = e.shiftKey ? 5 : 1; let used = true;
+  if (e.key === 'ArrowUp') sh.elev = clamp(sh.elev + big, -15, 105);
+  else if (e.key === 'ArrowDown') sh.elev = clamp(sh.elev - big, -15, 105);
+  else if (e.key === 'ArrowRight') sh.power = clamp(sh.power + big, 0, 100);
+  else if (e.key === 'ArrowLeft') sh.power = clamp(sh.power - big, 0, 100);
+  else if (e.key === ' ' || e.key === 'Enter') { fire(sh, arrowType); }
+  else if ('123'.includes(e.key)) { const t = ['normal', 'heavy', 'triple'][+e.key - 1]; if (sh.quiver[t] > 0) arrowType = t; }
+  else used = false;
+  if (used) { e.preventDefault(); if (state === 'aim') { sh.pull = sh.power / 100; syncHud(); } }
+});
+$('quiver').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !canAim()) return;
+  if (archers[turn].quiver[b.dataset.type] > 0) { arrowType = b.dataset.type; syncHud(); }
+  b.blur();
+});
+$('modes').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; mode = b.dataset.mode;
+  for (const x of $('modes').children) x.setAttribute('aria-pressed', String(x === b));
+});
+$('start').addEventListener('click', () => { newGame(); $('start').blur(); });
+$('again').addEventListener('click', () => { newGame(); $('again').blur(); });
+$('toMenu').addEventListener('click', () => { $('over').hidden = true; $('menu').hidden = false; state = 'menu'; setMsg(' '); syncHud(); });
+$('mute').addEventListener('click', () => { muted = !muted; $('mute').textContent = muted ? 'Ses kapalı' : 'Ses açık'; $('mute').setAttribute('aria-pressed', String(muted)); $('mute').blur(); });
+
+// ---------- boot ----------
+function resize() {
+  const r = stage.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+  view.cw = Math.max(1, r.width); view.ch = Math.max(1, r.height);
+  canvas.width = Math.round(view.cw * dpr); canvas.height = Math.round(view.ch * dpr);
+  view.w = Math.max(680, view.cw / view.ch * 600); view.s = view.cw / view.w; view.h = view.ch / view.s;
+  if (view.h < 600) { view.h = 600; view.s = view.ch / 600; view.w = view.cw / view.s; }
+  makeWeave();
+}
+new ResizeObserver(resize).observe(stage); resize();
+// attract scene behind the menu
+(() => { const pads = genWorld(); archers = [makeArcher(0, pads[0], false), makeArcher(1, pads[1], true)]; spawnLantern(); wind = 4; cam.x = camTargetX(); cam.y = FLOOR - view.h; syncHud(); })();
+let lastT = performance.now();
+function frame(t) { const dt = Math.min(0.033, (t - lastT) / 1000); lastT = t; update(dt); draw(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+window.__yay = { get state() { return state; }, get archers() { return archers; }, get turn() { return turn; } };
+})();
+</script>
