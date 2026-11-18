@@ -1,19 +1,19 @@
 import * as THREE from 'three';
-import { Game, Dir, Stats } from './game';
+import { Game, Summary } from './game';
 import { Sfx } from './audio';
 import { Look } from './character';
 import { KITS, BOOTS, BALLS, HAIRS, HAIR_COLORS, SKINS, NUMBERS, DEFAULT_LOADOUT, Loadout, pickRivalKit } from './cosmetics';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const KEY = 'dribbler.v1';
-interface Save { best: number; loadout: Loadout; sound: boolean; hints: boolean; seenHow: boolean }
-const save: Save = { best: 0, loadout: { ...DEFAULT_LOADOUT }, sound: true, hints: true, seenHow: false };
-try { const raw = localStorage.getItem(KEY); if (raw) { const s = JSON.parse(raw); Object.assign(save, s, { loadout: { ...DEFAULT_LOADOUT, ...(s.loadout || {}) } }); } } catch { /* kayıt yoksa varsayılan */ }
+interface Career { played: number; w: number; d: number; l: number; goals: number; assists: number }
+interface Save { career: Career; best: number; loadout: Loadout; sound: boolean; hints: boolean; seenHow: boolean }
+const save: Save = { career: { played: 0, w: 0, d: 0, l: 0, goals: 0, assists: 0 }, best: 0, loadout: { ...DEFAULT_LOADOUT }, sound: true, hints: true, seenHow: false };
+try { const raw = localStorage.getItem(KEY); if (raw) { const s = JSON.parse(raw); Object.assign(save, s, { loadout: { ...DEFAULT_LOADOUT, ...(s.loadout || {}) }, career: { ...save.career, ...(s.career || {}) } }); } } catch { /* kayıt yoksa varsayılan */ }
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* kaydedilemezse oyun yine çalışır */ } };
 
 const lookOf = (l: Loadout): Look => ({ kit: KITS[l.kit], number: l.number, boot: BOOTS[l.boots], hair: l.hair, hairColor: HAIR_COLORS[l.hairColor], skin: SKINS[l.skin] });
 const keeperLook: Look = { kit: { name: 'gk', a: '#c6ff3a', b: '#1b1b2a', pattern: 'chest', shorts: '#1b1b2a', socks: '#c6ff3a', num: '#1b1b2a' }, number: 1, boot: { color: '#22222c', sole: '#eeeeee' }, hair: 0, hairColor: '#1a1412', skin: '#c98e62' };
-const rivalOf = (l: Loadout): Look => ({ kit: pickRivalKit(KITS[l.kit]), number: 4, boot: { color: '#22222c', sole: '#eeeeee' }, hair: 0, hairColor: '#1a1412', skin: '#c98e62' });
 
 const app = $('app'), canvas = $<HTMLCanvasElement>('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -24,30 +24,33 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 0.56, 0.1, 400);
 const sfx = new Sfx(); sfx.enabled = save.sound;
 
-const hud = $('hud'), menu = $('menu'), over = $('over'), how = $('how'), pops = $('pops');
-let lastScore = -1, lastMult = -1, lastGoals = -1;
+const hud = $('hud'), menu = $('menu'), how = $('how'), over = $('over'), pops = $('pops'), contactEl = $('contact'), promptEl = $('prompt');
+const RIVALS = ['Kuzey Yıldızı', 'Liman Gücü', 'Çelik Kanat', 'Vadi FK', 'Poyraz SK', 'Altın Köprü', 'Kara Bulut', 'Bozkır Atletik'];
 const game = new Game(scene, camera, sfx, {
   popup(text, kind) {
     const el = document.createElement('div'); el.className = 'pop ' + kind; el.textContent = text;
-    pops.appendChild(el); while (pops.children.length > 3) pops.firstElementChild!.remove();
+    pops.appendChild(el); while (pops.children.length > 4) pops.firstElementChild!.remove();
     el.addEventListener('animationend', () => el.remove());
   },
-  stage() { const f = $('flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); },
-  hud(score, mult, goals) {
-    if (goals !== lastGoals) { $('goalsN').textContent = String(goals); lastGoals = goals; }
-    if (score !== lastScore) { $('score').textContent = String(score); lastScore = score; }
-    if (mult !== lastMult) { const m = $('mult'); m.textContent = 'x' + mult; m.dataset.m = String(mult); m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump'); lastMult = mult; }
+  board(us, them, minute, rival, results) {
+    $('bUs').textContent = String(us); $('bThem').textContent = String(them); $('bRival').textContent = rival; $('bMin').textContent = minute + "'";
+    $('dots').querySelectorAll('i').forEach((el, i) => { el.className = results[i] || (i === results.length ? 'now' : ''); });
   },
-  over(s: Stats) {
-    const isBest = s.score > save.best; if (isBest) { save.best = s.score; persist(); }
-    $('oScore').textContent = String(s.score); $('oBest').textContent = isBest ? 'Yeni rekor!' : 'En iyi: ' + save.best;
-    $('oTitle').textContent = s.reason || 'Top kaptırıldı'; $('oGoals').textContent = String(s.goals);
-    $('oDist').textContent = s.dist + ' m'; $('oDrib').textContent = String(s.dribbles); $('oPerf').textContent = String(s.perfects); $('oMult').textContent = 'x' + s.bestMult;
-    hud.hidden = true; over.hidden = false;
+  prompt(title, text) { $('pTitle').textContent = title; $('pText').textContent = text; promptEl.hidden = !title && !text; },
+  contact(on, time) {
+    contactEl.hidden = !on; $('mark').hidden = true;
+    if (on) { const r = $('ctime'); r.style.animation = 'none'; void r.offsetWidth; r.style.animation = `ctime ${time}s linear forwards`; }
+  },
+  over(s: Summary) {
+    const c = save.career; c.played++; c.goals += s.goals; c.assists += s.assists; if (s.us > s.them) c.w++; else if (s.us < s.them) c.l++; else c.d++;
+    persist();
+    $('oTitle').textContent = s.us > s.them ? 'Galibiyet' : s.us < s.them ? 'Mağlubiyet' : 'Beraberlik';
+    $('oScore').textContent = s.us + ' - ' + s.them; $('oRival').textContent = 'Dribbler SK - ' + s.rival;
+    $('oGoals').textContent = String(s.goals); $('oAst').textContent = String(s.assists); $('oRate').textContent = s.rating.toFixed(1); $('oPts').textContent = String(c.w * 3 + c.d);
+    hud.hidden = true; promptEl.hidden = true; contactEl.hidden = true; over.hidden = false;
   },
 }, lookOf(save.loadout));
-game.hints = save.hints;
-const applyLook = () => { game.setPlayerLook(lookOf(save.loadout)); game.setRivalLook(rivalOf(save.loadout)); game.setKeeperLook(keeperLook); game.setBall(BALLS[save.loadout.ball]); };
+const applyLook = () => { game.setPlayerLook(lookOf(save.loadout)); game.setKeeperLook(keeperLook); game.setRivalLook({ kit: pickRivalKit(KITS[save.loadout.kit]), number: 4, boot: { color: '#22222c', sole: '#eeeeee' }, hair: 0, hairColor: '#1a1412', skin: '#c98e62' }); game.setBall(BALLS[save.loadout.ball]); };
 applyLook();
 (document as any).fonts?.ready?.then(applyLook);
 
@@ -58,20 +61,22 @@ function resize() {
 new ResizeObserver(resize).observe(app); resize();
 
 // ---------- ekranlar ----------
-function showMenu() { game.toMenu(); camera.updateProjectionMatrix(); menu.hidden = false; over.hidden = true; hud.hidden = true; how.hidden = true; $('best').textContent = 'En iyi skor: ' + save.best; }
+function showMenu() {
+  game.toMenu(); menu.hidden = false; hud.hidden = true; how.hidden = true; over.hidden = true; promptEl.hidden = true; contactEl.hidden = true;
+  const c = save.career; $('best').textContent = c.played ? `${c.played} maç · ${c.w}G ${c.d}B ${c.l}M · ${c.goals} gol · ${c.assists} asist` : 'Kariyerin ilk maçı seni bekliyor';
+}
 function play() {
   sfx.unlock();
-  if (!save.seenHow) { save.seenHow = true; persist(); menu.hidden = true; over.hidden = true; how.hidden = false; how.dataset.then = 'play'; return; }
-  menu.hidden = true; over.hidden = true; how.hidden = true; hud.hidden = false; pops.innerHTML = ''; lastScore = lastMult = lastGoals = -1;
-  game.start();
+  if (!save.seenHow) { save.seenHow = true; persist(); menu.hidden = true; how.hidden = false; how.dataset.then = 'play'; return; }
+  menu.hidden = true; how.hidden = true; over.hidden = true; hud.hidden = false; pops.innerHTML = '';
+  game.startMatch(save.career.played, RIVALS[save.career.played % RIVALS.length]);
 }
 $('play').onclick = play; $('again').onclick = play; $('toMenu').onclick = () => { sfx.click(); showMenu(); };
 $('bHow').onclick = () => { sfx.unlock(); sfx.click(); menu.hidden = true; how.hidden = false; how.dataset.then = 'menu'; };
 $('howOk').onclick = () => { if (how.dataset.then === 'play') play(); else showMenu(); };
-const tSound = $('tSound'), tHints = $('tHints');
-const syncToggles = () => { tSound.textContent = 'Ses: ' + (save.sound ? 'Açık' : 'Kapalı'); tSound.setAttribute('aria-pressed', String(save.sound)); tHints.textContent = 'İpucu okları: ' + (save.hints ? 'Açık' : 'Kapalı'); tHints.setAttribute('aria-pressed', String(save.hints)); };
+const tSound = $('tSound');
+const syncToggles = () => { tSound.textContent = 'Ses: ' + (save.sound ? 'Açık' : 'Kapalı'); tSound.setAttribute('aria-pressed', String(save.sound)); };
 tSound.onclick = () => { save.sound = !save.sound; sfx.unlock(); sfx.setEnabled(save.sound); sfx.click(); persist(); syncToggles(); };
-tHints.onclick = () => { save.hints = !save.hints; game.hints = save.hints; sfx.unlock(); sfx.click(); persist(); syncToggles(); };
 syncToggles();
 
 // ---------- soyunma odası ----------
@@ -109,22 +114,19 @@ document.querySelectorAll<HTMLElement>('#tabs button').forEach(b => b.onclick = 
 renderOpts();
 
 // ---------- kontroller ----------
-let sx = 0, sy = 0, down = false;
-const TH = 22;
-canvas.addEventListener('pointerdown', e => { down = true; sx = e.clientX; sy = e.clientY; sfx.unlock(); });
-window.addEventListener('pointermove', e => {
-  if (!down || game.mode !== 'run') return;
-  const dx = e.clientX - sx, dy = e.clientY - sy;
-  if (Math.abs(dx) < TH && Math.abs(dy) < TH) return;
-  game.swipe(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u'));
-  down = false; // her dokunuş tek hareket
+// 1) Ekrana bas, geri çek (sapan gibi), bırak: yön ve güç.  2) Büyük topa dokun: vuruş noktası.
+let dragId = -1, dx0 = 0, dy0 = 0;
+canvas.addEventListener('pointerdown', e => { sfx.unlock(); if (game.mode !== 'aim' || dragId >= 0) return; dragId = e.pointerId; dx0 = e.clientX; dy0 = e.clientY; });
+window.addEventListener('pointermove', e => { if (e.pointerId === dragId) game.aimDrag(e.clientX - dx0, e.clientY - dy0, app.clientHeight); });
+const end = (e: PointerEvent) => { if (e.pointerId !== dragId) return; dragId = -1; game.aimRelease(); };
+window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
+const bigBall = $('bigball');
+bigBall.addEventListener('pointerdown', e => {
+  e.preventDefault(); const r = bigBall.getBoundingClientRect(), cx = ((e.clientX - r.left) / r.width - 0.5) * 2, cy = -((e.clientY - r.top) / r.height - 0.5) * 2;
+  const m = $('mark'); m.style.left = (e.clientX - r.left) + 'px'; m.style.top = (e.clientY - r.top) + 'px'; m.hidden = false;
+  game.contact(cx, cy);
 });
-window.addEventListener('pointerup', () => down = false); window.addEventListener('pointercancel', () => down = false);
-const keys: Record<string, Dir> = { ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'u', ArrowDown: 'd', a: 'l', d: 'r', w: 'u', s: 'd' };
-window.addEventListener('keydown', e => {
-  if (keys[e.key]) { e.preventDefault(); game.swipe(keys[e.key]); }
-  else if ((e.key === 'Enter' || e.key === ' ') && game.mode !== 'run' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); if (!how.hidden) $('howOk').click(); else play(); }
-});
+window.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && (game.mode === 'menu' || game.mode === 'done') && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); if (!how.hidden) $('howOk').click(); else play(); } });
 
 showMenu();
 let last = performance.now();

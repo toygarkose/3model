@@ -22,21 +22,35 @@ button:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 .layer > * { pointer-events: auto; }
 
 /* HUD */
-#hud { padding-block: 14px; flex-direction: row; justify-content: space-between; align-items: flex-start; }
-#hud > * { pointer-events: none; }
-#score { font: italic 800 44px/1 var(--display); font-variant-numeric: tabular-nums; text-shadow: 0 3px 0 rgba(13,18,51,.55); }
-.scorelabel { font: 600 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
-#mult { font: italic 800 34px/1 var(--display); padding: 6px 14px 7px; background: var(--night); border: 2px solid var(--line); transform: skewX(-8deg); }
-#mult[data-m="2"], #mult[data-m="3"] { color: var(--volt); border-color: var(--volt); }
-#mult[data-m="4"], #mult[data-m="5"] { color: var(--night); background: var(--volt); border-color: var(--volt); }
-#mult.bump { animation: bump .3s ease-out; }
-@keyframes bump { 0% { transform: skewX(-8deg) scale(1.5); } 100% { transform: skewX(-8deg) scale(1); } }
+#hud { padding-block: 12px; gap: 8px; align-items: center; }
+.board { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--night); border: 2px solid var(--line); font: 800 16px/1 var(--display); letter-spacing: .05em; text-transform: uppercase; max-width: 100%; }
+.board .team { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+.board b { font: italic 800 26px/1 var(--display); color: var(--volt); font-variant-numeric: tabular-nums; }
+.board .sep { color: var(--dim); }
+#bMin { margin-left: 4px; padding-left: 10px; border-left: 2px solid var(--line); font-variant-numeric: tabular-nums; }
+#dots { display: flex; gap: 7px; }
+#dots i { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--chalk); background: rgba(13,18,51,.5); }
+#dots i.now { background: var(--chalk); }
+#dots i.goal { background: var(--volt); border-color: var(--volt); }
+#dots i.assist { background: var(--mint); border-color: var(--mint); }
+#dots i.miss { background: var(--flare); border-color: var(--flare); }
+#prompt { position: absolute; left: var(--gl); right: var(--gr); bottom: calc(26px + env(safe-area-inset-bottom, 0px)); padding: 12px 14px; background: rgba(13,18,51,.82); border-left: 4px solid var(--volt); pointer-events: none; display: flex; flex-direction: column; gap: 4px; }
+#prompt b { font: italic 800 24px/1 var(--display); letter-spacing: .03em; text-transform: uppercase; }
+#prompt b:empty { display: none; }
+#prompt span { font-size: 15px; line-height: 1.35; color: var(--chalk); }
+/* vuruş noktası: büyük top */
+#contact { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(13,18,51,.35); padding-top: 22%; }
+#bigball { position: relative; width: min(58vw, 230px); aspect-ratio: 1; border-radius: 50%; touch-action: none; cursor: pointer;
+  background: radial-gradient(circle at 50% 50%, rgba(13,18,51,.85) 0 3%, transparent 3.5%), radial-gradient(circle at 38% 32%, #ffffff 0 30%, #dfe4f2 62%, #aab2cf 100%); box-shadow: 0 10px 0 rgba(13,18,51,.5), inset 0 0 0 3px var(--night); }
+#bigball::before, #bigball::after { content: ""; position: absolute; background: rgba(13,18,51,.22); }
+#bigball::before { left: 50%; top: 6%; bottom: 6%; width: 2px; }
+#bigball::after { top: 50%; left: 6%; right: 6%; height: 2px; }
+#ctime { position: absolute; inset: -12px; border-radius: 50%; border: 5px solid var(--volt); }
+@keyframes ctime { from { transform: scale(1.25); opacity: 1; } to { transform: scale(1); opacity: .4; border-color: var(--flare); } }
+.guide { position: absolute; left: 0; right: 0; bottom: -40px; text-align: center; font: 600 13px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--chalk); pointer-events: none; }
+#mark { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: var(--flare); border: 3px solid var(--chalk); pointer-events: none; }
+#oRival { font: 600 15px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin-top: 8px; }
 
-.goalline { margin-top: 6px; font: 600 14px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
-.goalline b { font: italic 800 22px/1 var(--display); color: var(--volt); letter-spacing: 0; }
-#flash { position: absolute; inset: 0; background: var(--night); opacity: 0; pointer-events: none; }
-#flash.on { animation: flash .7s ease-out; }
-@keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
 #pops { position: absolute; left: 0; right: 0; top: 24%; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
 .pop { font: italic 800 30px/1 var(--display); letter-spacing: .02em; text-shadow: 0 3px 0 rgba(13,18,51,.7); animation: pop .85s ease-out forwards; }
 .pop.perfect { font-size: 44px; color: var(--volt); }
@@ -47,7 +61,7 @@ button:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 #menu { justify-content: space-between; padding-left: 0; padding-right: 0; }
 #menu header { padding: 22px var(--gr) 0 var(--gl); pointer-events: none; }
 h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); letter-spacing: -.01em; text-shadow: 4px 4px 0 var(--flare); }
-#best { margin: 12px 0 0; font: 600 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--volt); }
+#best { margin: 12px 0 0; font: 600 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--volt); text-shadow: 0 2px 0 var(--night), 0 0 12px var(--night); }
 .sheet { background: linear-gradient(180deg, rgba(13,18,51,.82), var(--night) 30%); border-top: 2px solid var(--line); padding: 10px 0 max(14px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
 #tabs { display: flex; gap: 4px; padding: 0 var(--gr) 0 var(--gl); }
 #tabs button { flex: 1; min-width: 0; padding: 9px 2px; font: 800 16px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); border-bottom: 3px solid transparent; }
@@ -82,53 +96,54 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
 .stats div { border-top: 2px solid var(--line); padding-top: 8px; }
 .stats dt { font: 600 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
 .stats dd { margin: 4px 0 0; font: 800 30px/1 var(--display); font-variant-numeric: tabular-nums; }
-@media (prefers-reduced-motion: reduce) { .pop, #mult.bump { animation-duration: .01s; } }
+@media (prefers-reduced-motion: reduce) { .pop { animation-duration: .01s; }  }
 </style>
 <div id="app">
   <canvas id="c" aria-label="Dribbler oyun sahnesi"></canvas>
   <div id="hud" class="layer" hidden>
-    <div><div class="scorelabel">Skor</div><div id="score">0</div><div class="goalline">Gol <b id="goalsN">0</b></div></div>
-    <div id="mult" data-m="1">x1</div>
+    <div class="board"><span class="team">Dribbler SK</span><b id="bUs">0</b><span class="sep">-</span><b id="bThem">0</b><span class="team" id="bRival">Rakip</span><span id="bMin">0'</span></div>
+    <div id="dots" aria-label="Maçtaki anlar"><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+  <div id="prompt" hidden><b id="pTitle"></b><span id="pText"></span></div>
+  <div id="contact" hidden>
+    <div id="bigball"><div id="ctime"></div><div class="guide">Alt: havadan · Yan: falso</div><div id="mark" hidden></div></div>
   </div>
   <div id="pops" aria-live="polite"></div>
-  <div id="flash"></div>
 
   <section id="menu" class="layer">
-    <header><h1>DRIBBLER</h1><p id="best">En iyi skor: 0</p></header>
+    <header><h1>DRIBBLER</h1><p id="best"></p></header>
     <div class="sheet">
       <div id="tabs" role="tablist">
         <button role="tab" data-tab="kit">Forma</button><button role="tab" data-tab="boots">Krampon</button><button role="tab" data-tab="ball">Top</button><button role="tab" data-tab="hair">Saç</button><button role="tab" data-tab="skin">Ten</button>
       </div>
       <div id="opts"></div>
       <div class="actions">
-        <button id="play" class="cta">OYNA</button>
-        <div class="minor"><button id="tSound">Ses: Açık</button><button id="tHints">İpucu okları: Açık</button><button id="bHow">Nasıl oynanır?</button></div>
+        <button id="play" class="cta">MAÇA ÇIK</button>
+        <div class="minor"><button id="tSound">Ses: Açık</button><button id="bHow">Nasıl oynanır?</button></div>
       </div>
     </div>
   </section>
 
   <section id="how" class="layer card" hidden>
-    <h2>Savunmayı geç, golü at</h2>
-    <p>Futbolcun kendi koşar. Sen sadece kaydırırsın. Savunmacı yaklaşıp ayağının altındaki halka parladığında hamleni yap.</p>
+    <h2>Maçın kilit anları senin</h2>
+    <p>Her maçta beş an sana düşer: şut, frikik ya da pas. Gerisini takım oynar; skoru senin anların belirler.</p>
     <ul class="moves">
-      <li><div class="key">↔</div><div><b>Bekleyen savunmacı</b><span>Yaklaşınca sağa ya da sola kaydır. Erken kaydırırsan peşinden gelir.</span></div></li>
-      <li><div class="key">←</div><div><b>Kolunu açan</b><span>Bir tarafı kapatır. Açık kalan tarafa kaydır.</span></div></li>
-      <li><div class="key">↑</div><div><b>Kayarak gelen · sarı halka</b><span>Yukarı kaydır, topu sektirip üstünden atla.</span></div></li>
-      <li><div class="key">↓</div><div><b>Üstüne koşan iri savunmacı · kırmızı halka</b><span>Aşağı kaydır, topu geri çek, boşa düşsün.</span></div></li>
-      <li><div class="key">⚽</div><div><b>Kale: şut çek</b><span>Savunmayı geçince zaman yavaşlar. Kalecinin boş bıraktığı köşeye kaydır. Kaleci üstüne koşuyorsa yukarı kaydırıp aşırt.</span></div></li>
+      <li><div class="key">↓</div><div><b>Geri çek ve bırak</b><span>Ekrana bas, sapan gibi geriye çek. Ok vuracağın yönü gösterir; ne kadar çekersen o kadar sert gider.</span></div></li>
+      <li><div class="key">●</div><div><b>Vuruş noktasını seç</b><span>Bırakınca büyük bir top çıkar. Altına dokunursan top havalanır, yanına dokunursan falso alır, ortasına dokunursan düz gider.</span></div></li>
+      <li><div class="key">→</div><div><b>Pas anları</b><span>Turkuaz çizgi arkadaşının koşu yolunu gösterir. Topu olduğu yere değil, koştuğu yere at.</span></div></li>
     </ul>
-    <p>Halka altın rengine döndüğü an yaparsan <b>MÜKEMMEL</b> olur ve çarpanın artar. Ne kadar geç, o kadar iyi.</p>
+    <p>Frikikte baraj sıçrar: üstünden aşır ya da yanından falsoyla dolandır.</p>
     <button id="howOk" class="cta">ANLADIM</button>
   </section>
 
   <section id="over" class="layer card" hidden>
-    <h2 id="oTitle">Top kaptırıldı</h2>
-    <div><div id="oScore">0</div><div id="oBest">En iyi: 0</div></div>
+    <h2 id="oTitle">Maç bitti</h2>
+    <div><div id="oScore">0 - 0</div><div id="oRival"></div></div>
     <dl class="stats">
-      <div><dt>Gol</dt><dd id="oGoals">0</dd></div><div><dt>Mesafe</dt><dd id="oDist">0 m</dd></div><div><dt>Çalım</dt><dd id="oDrib">0</dd></div>
-      <div><dt>Mükemmel</dt><dd id="oPerf">0</dd></div><div hidden><dd id="oMult">x1</dd></div>
+      <div><dt>Gol</dt><dd id="oGoals">0</dd></div><div><dt>Asist</dt><dd id="oAst">0</dd></div>
+      <div><dt>Maç puanın</dt><dd id="oRate">6.0</dd></div><div><dt>Lig puanı</dt><dd id="oPts">0</dd></div>
     </dl>
-    <button id="again" class="cta">TEKRAR OYNA</button>
+    <button id="again" class="cta">SONRAKİ MAÇ</button>
     <button id="toMenu" class="ghost">Soyunma odası</button>
   </section>
 </div>

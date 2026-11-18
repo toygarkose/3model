@@ -1,484 +1,423 @@
 import * as THREE from 'three';
-import { Footballer, Look, Pose, pose, runPose, jockeyPose, slidePose, sitFallPose, diveFallPose, sideFallPose } from './character';
-import { World, BOX } from './world';
-import { Particles, hintMaterial } from './fx';
+import { Footballer, Look, Pose, pose, runPose, jockeyPose, sideFallPose } from './character';
+import { World, GZ, HALF_W, GOAL_W, GOAL_H, NET_D } from './world';
+import { Particles } from './fx';
 import { Sfx } from './audio';
 import { makeBallTexture } from './cosmetics';
 
-export type Dir = 'l' | 'r' | 'u' | 'd';
-type DType = 'track' | 'lean' | 'slide' | 'lunge' | 'static';
-export interface Stats { score: number; dist: number; dribbles: number; perfects: number; bestMult: number; goals: number; reason: string }
-type KKind = 'center' | 'left' | 'right' | 'rush';
+export type MomentType = 'shot' | 'freekick' | 'pass';
+export type MomentResult = 'goal' | 'assist' | 'miss';
+export interface Summary { us: number; them: number; goals: number; assists: number; rating: number; rival: string }
 export interface Hooks {
   popup(text: string, kind: 'perfect' | 'good' | 'warn'): void;
-  hud(score: number, mult: number, goals: number): void;
-  stage(n: number): void;
-  over(s: Stats): void;
+  board(us: number, them: number, minute: number, rival: string, results: MomentResult[]): void;
+  prompt(title: string, text: string): void;
+  contact(on: boolean, time: number): void;
+  over(s: Summary): void;
 }
 
-const LANE_X = [-2.3, 0, 2.3];
-const BALL_R = 0.15;
-const PERFECT = 0.25;          // temasa bu kadar saniye kala yapılan çalım "mükemmel"
-const ACTIVATE = { track: 40, lean: 40, slide: 17, lunge: 16, static: 0 };
-const MARK_COL = { track: 0xffffff, lean: 0xffffff, slide: 0xffd23f, lunge: 0xff4d6d, static: 0xffffff };
+const BALL_R = 0.15, POST_R = 0.07, G = 9.81, MOMENTS = 5, CONTACT_TIME = 1.7;
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+const vib = (p: number | number[]) => { try { navigator.vibrate?.(p); } catch { /* titreşim desteklenmiyor */ } };
 
-interface Def {
-  type: DType; s: number; x: number; fb: Footballer; state: 'approach' | 'beaten' | 'gone' | 'won';
-  t: number; cover: number; sliding: boolean; perfect: boolean; beatDir: number; force: boolean; phase: number;
-  marker: THREE.Mesh; hint: THREE.Sprite; warned: boolean;
-}
-interface Move { type: 'cut' | 'spin' | 'hop' | 'drag' | 'bump'; t: number; dur: number; dir: number; from: number; to: number }
-
-const ease = (u: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, u)), 3);
-const approach = (v: number, target: number, step: number) => v < target ? Math.min(target, v + step) : Math.max(target, v - step);
+interface Plan { T: number; x: number; y: number; from: number; dir: number; dist: number; reach: boolean; kind: 'catch' | 'parry' | 'tip'; done: boolean; dive: boolean }
+interface Def { fb: Footballer; x: number; z: number; wall: boolean; phase: number }
+type Mode = 'menu' | 'intro' | 'aim' | 'contact' | 'fly' | 'result' | 'done';
 
 export class Game {
-  mode: 'menu' | 'run' | 'goal' | 'dead' = 'menu';
-  // atak: belli sayıda savunmacı, sonunda kale ve kaleci
-  private stage = 1; private left = 0; private goalS = 0; private circleS = 0; private keeper!: Footballer; private kHint!: THREE.Sprite;
-  private kKind: KKind = 'center'; private kx = 0; private kOut = 0; private kDive = 0; private shootPhase = false; private goalT = 0;
-  private shot: { t: number; dur: number; from: THREE.Vector3; fromS: number; toS: number; tx: number; ty: number; arc: number; goal: boolean; perfect: boolean } | null = null;
-  hints = true;
-  private world: World; private player: Footballer; private ball: THREE.Mesh; private ballMat: THREE.MeshStandardMaterial;
-  private fx = new Particles(); private defs: Def[] = []; private pool: Footballer[] = [];
-  private rival!: Look;
-  private dist = 0; private speed = 10; private phase = 0; private lane = 1; private px = 0;
-  private move: Move | null = null; private buffer: Dir | null = null;
-  private nextS = 0; private encounters = 0; private slow = 0; private shake = 0; private fovKick = 0;
-  private bonus = 0; private mult = 1; private stats: Stats = { score: 0, dist: 0, dribbles: 0, perfects: 0, bestMult: 1, goals: 0, reason: '' };
-  private deadT = 0; private overSent = false; private ballVel = new THREE.Vector3(); private camX = 0; private time = 0;
-  private lastCycle = 0; private window = 0.56;
-  private ringGeo = new THREE.RingGeometry(0.62, 0.8, 40);
+  mode: Mode = 'menu';
+  private world: World; private player: Footballer; private keeper: Footballer; private mate: Footballer;
+  private ball: THREE.Mesh; private ballMat: THREE.MeshStandardMaterial; private arrow: THREE.Group; private arrowMat: THREE.MeshBasicMaterial; private runLine: THREE.Mesh;
+  private fx = new Particles(); private defs: Def[] = []; private pool: Footballer[] = []; private rivalLook!: Look;
+  // maç
+  private level = 0; private rival = ''; private us = 0; private them = 0; private idx = -1; private minutes: number[] = []; private results: MomentResult[] = [];
+  private goals = 0; private assists = 0; private type: MomentType = 'shot';
+  // an
+  private spot = new THREE.Vector3(); private fwd = new THREE.Vector2(0, -1); private aimDir = new THREE.Vector2(0, -1); private power = 0; private aiming = false;
+  private t = 0; private kickT = 9; private kicker: 'player' | 'mate' = 'player';
+  // top
+  private bv = new THREE.Vector3(); private curve = new THREE.Vector3(); private curveT = 0; private sinceKick = 0; private live = false; private inGoal = false; private hitPost = false; private byMate = false;
+  // takım arkadaşı
+  private mx = 0; private mz = 0; private mTo = new THREE.Vector2(); private mPhase = 0; private mGot = false;
+  // kaleci
+  private kx = 0; private kz = GZ + 0.7; private kState: 'set' | 'dive' | 'down' | 'hold' = 'set'; private kT = 0; private plan: Plan | null = null;
+  private clock = 0; private hitstop = 0; private slow = 0; private shake = 0;
+  private camPos = new THREE.Vector3(0, 7, 30); private camLook = new THREE.Vector3(0, 1, 10);
 
   constructor(private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, private sfx: Sfx, private hooks: Hooks, look: Look) {
     this.world = new World(scene);
-    this.keeper = new Footballer(look); this.keeper.root.visible = false; scene.add(this.keeper.root);
-    this.kHint = new THREE.Sprite(hintMaterial('lr')); this.kHint.visible = false; this.kHint.renderOrder = 10; scene.add(this.kHint);
-    this.player = new Footballer(look); scene.add(this.player.root);
+    this.player = new Footballer(look); this.keeper = new Footballer(look); this.mate = new Footballer(look);
+    scene.add(this.player.root, this.keeper.root, this.mate.root);
     this.ballMat = new THREE.MeshStandardMaterial({ roughness: 0.45 });
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 24, 16), this.ballMat); this.ball.castShadow = true; scene.add(this.ball);
+    // nişan oku: topu geri çektikçe uzar
+    this.arrowMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 1).translate(0, 0.5, 0), this.arrowMat); shaft.rotation.x = Math.PI / 2; shaft.name = 'shaft';
+    const tri = new THREE.Shape(); tri.moveTo(-0.5, 0); tri.lineTo(0.5, 0); tri.lineTo(0, 0.9); tri.closePath();
+    const head = new THREE.Mesh(new THREE.ShapeGeometry(tri), this.arrowMat); head.rotation.x = Math.PI / 2; head.name = 'head';
+    this.arrow = new THREE.Group(); this.arrow.add(shaft, head); this.arrow.position.y = 0.04; this.arrow.visible = false; scene.add(this.arrow);
+    this.runLine = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: 0x39f0c8, transparent: true, opacity: 0.7, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    this.runLine.rotation.order = 'YXZ'; this.runLine.rotation.x = Math.PI / 2; this.runLine.position.y = 0.035; this.runLine.visible = false; scene.add(this.runLine);
     scene.add(this.fx.points);
     this.toMenu();
   }
 
-  setPlayerLook(l: Look) { this.player.setLook(l); }
+  setPlayerLook(l: Look) { this.player.setLook(l); this.mate.setLook({ ...l, number: l.number === 9 ? 11 : 9, hair: (l.hair + 2) % 6, boot: { color: '#f5f5f5', sole: '#1b1b2a' } }); }
   setKeeperLook(l: Look) { this.keeper.setLook(l); }
-  setRivalLook(l: Look) { this.rival = l; for (const f of this.pool) f.setLook(l); for (const d of this.defs) d.fb.setLook(l); }
+  setRivalLook(l: Look) { this.rivalLook = l; for (const f of this.pool) f.setLook(l); for (const d of this.defs) d.fb.setLook(l); }
   setBall(b: { base: string; patch: string; style: string }) { const o = this.ballMat.map; this.ballMat.map = makeBallTexture(b); this.ballMat.needsUpdate = true; o?.dispose(); }
 
   toMenu() {
-    this.mode = 'menu'; this.clearDefs(); this.goalS = 0; this.shot = null; this.shootPhase = false; this.keeper.root.visible = false; this.kHint.visible = false; this.world.setStage(null, null);
-    this.player.away = false; this.player.root.position.set(0, 0, 0);
+    this.mode = 'menu'; this.clearDefs(); this.arrow.visible = false; this.runLine.visible = false; this.mate.root.visible = false; this.hooks.contact(false, 0);
+    this.player.root.position.set(0, 0, 0); this.kx = 0; this.kz = GZ + 0.7; this.kState = 'set'; this.plan = null;
     this.camera.fov = 40; this.camera.updateProjectionMatrix();
   }
 
-  start() {
-    this.clearDefs();
-    this.mode = 'run'; this.dist = 0; this.speed = 10; this.phase = 0; this.lane = 1; this.px = 0; this.move = null; this.buffer = null;
-    this.nextS = 46; this.encounters = 0; this.slow = 0; this.shake = 0; this.bonus = 0; this.mult = 1; this.deadT = 0; this.overSent = false; this.camX = 0;
-    this.stats = { score: 0, dist: 0, dribbles: 0, perfects: 0, bestMult: 1, goals: 0, reason: '' };
-    this.stage = 1; this.setupStage(); this.nextS = 46;
-    this.player.away = true; this.player.baseYaw = Math.PI; this.player.root.position.set(0, 0, 0);
-    this.player.setPose(runPose(0), 0);
-    this.ball.position.set(0.3, BALL_R, -1.2);
-    this.sfx.whistle(); this.sfx.crowd(0.2);
-    this.hooks.hud(0, 1, 0);
+  startMatch(level: number, rival: string) {
+    this.level = level; this.rival = rival; this.us = this.them = 0; this.idx = -1; this.results = []; this.goals = this.assists = 0;
+    this.minutes = [rnd(4, 17), rnd(20, 38), rnd(41, 58), rnd(60, 75), rnd(78, 90)].map(Math.round);
+    this.camera.fov = 58; this.camera.updateProjectionMatrix();
+    this.sfx.whistle(); this.sfx.crowd(0.25);
+    this.nextMoment();
   }
 
-  private setupStage() {
-    this.left = Math.min(9, 3 + this.stage); this.goalS = 0; this.shootPhase = false; this.shot = null; this.kOut = 0; this.kDive = 0;
-    this.nextS = this.dist + 46; this.circleS = this.dist + 16; this.keeper.root.visible = false; this.kHint.visible = false;
+  private clearDefs() { for (const d of this.defs) { this.scene.remove(d.fb.root); this.pool.push(d.fb); } this.defs.length = 0; }
+  private addDef(x: number, z: number, wall = false) {
+    const fb = this.pool.pop() || new Footballer(this.rivalLook); fb.root.scale.setScalar(1); this.scene.add(fb.root);
+    this.defs.push({ fb, x, z, wall, phase: Math.random() * 6 });
   }
 
-  private clearDefs() { for (const d of this.defs) this.release(d); this.defs.length = 0; }
-  private release(d: Def) { this.scene.remove(d.fb.root, d.marker, d.hint); (d.marker.material as THREE.Material).dispose(); this.pool.push(d.fb); }
-
-  // ---------- girdi ----------
-  swipe(dir: Dir) {
-    if (this.mode !== 'run') return;
-    if (this.move && this.move.t < this.move.dur - 0.03) { if (this.move.dur - this.move.t < 0.2) this.buffer = dir; return; }
-    this.doMove(dir);
-  }
-
-  private ttc(d: Def) { return (d.s - this.dist) / (this.speed + this.own(d)); }
-  private own(d: Def) {
-    const gap = d.s - this.dist;
-    if (d.state !== 'approach' || gap > ACTIVATE[d.type]) return 0;
-    return d.type === 'lunge' ? 6.5 : d.type === 'slide' ? (d.sliding ? 7 : 4) : d.type === 'static' ? 0 : 1.2;
-  }
-  /** Çalım penceresindeki en yakın (duran olmayan) savunmacı */
-  private target(maxT: number): Def | null {
-    let best: Def | null = null, bt = 1e9;
-    for (const d of this.defs) {
-      if (d.state !== 'approach' || d.type === 'static') continue;
-      const gap = d.s - this.dist; if (gap < 0.85) continue;
-      const t = this.ttc(d); if (t <= maxT && t < bt) { bt = t; best = d; }
-    }
-    return best;
-  }
-
-  private doMove(dir: Dir) {
-    const tg = this.target(this.window);
-    if (this.shootPhase) { if (!this.shot) this.shootBall(dir); return; }
-    if (dir === 'l' || dir === 'r') {
-      const sgn = dir === 'r' ? 1 : -1, to = this.lane + sgn;
-      if (to < 0 || to > 2) { this.move = { type: 'bump', t: 0, dur: 0.16, dir: sgn, from: this.px, to: this.px }; return; }
-      let perfect = false;
-      if (tg && (tg.type === 'track' || tg.type === 'lean')) {
-        if (tg.type === 'lean' && sgn === tg.cover) tg.force = true;   // kapattığı tarafa gittin
-        else { perfect = this.ttc(tg) <= PERFECT; this.beat(tg, perfect, sgn); }
-      } else if (!tg) {
-        const near = this.target(this.window + 0.4);
-        if (near && (near.type === 'track' || near.type === 'lean') && !near.warned) { near.warned = true; this.early(); }
-      }
-      this.move = { type: perfect && this.stats.perfects % 2 === 0 ? 'spin' : 'cut', t: 0, dur: perfect ? 0.34 : 0.24, dir: sgn, from: this.px, to: LANE_X[to] };
-      this.lane = to; this.sfx.whoosh();
-      this.fx.emit(new THREE.Vector3(this.px, 0.1, 0.2), 0x9dffb0, 8, 2.2, 0.8, 0.4);
-    } else if (dir === 'u') {
-      this.move = { type: 'hop', t: 0, dur: 0.56, dir: 0, from: this.px, to: this.px }; this.sfx.hop();
-      if (tg && tg.type === 'slide') this.beat(tg, this.ttc(tg) <= PERFECT, 0);
-      else if (!tg) { const n = this.target(this.window + 0.4); if (n && n.type === 'slide' && !n.warned) { n.warned = true; this.early(); } }
+  // ---------- maç akışı: sıradaki kilit an ----------
+  private nextMoment() {
+    this.idx++;
+    if (this.idx >= MOMENTS) return this.finish();
+    // anlar arasında rakip de oynuyor
+    let news = '';
+    if (Math.random() < Math.min(0.5, 0.2 + this.level * 0.025)) { this.them++; news = `${Math.max(1, this.minutes[this.idx] - Math.round(rnd(2, 9)))}' ${this.rival} gol attı. `; this.sfx.crowd(0.05); }
+    const lv = this.level, r = Math.random();
+    this.type = this.idx === 0 && lv === 0 ? 'shot' : r < 0.45 ? 'shot' : r < 0.75 ? 'freekick' : 'pass';
+    this.clearDefs(); this.mate.root.visible = false; this.runLine.visible = false;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    let title = '', text = '';
+    if (this.type === 'shot') {
+      const d = rnd(15, 21 + Math.min(6, lv)); this.spot.set(side * rnd(0, 10), BALL_R, GZ + d);
+      const n = 1 + Math.min(2, Math.floor(lv / 2)) + (Math.random() < 0.4 ? 1 : 0);
+      for (let i = 0; i < n; i++) { const u = rnd(0.3, 0.7), off = (Math.random() < 0.5 ? -1 : 1) * rnd(0.7, 2.4); this.addDef(this.spot.x * (1 - u) + off, this.spot.z + (GZ - this.spot.z) * u); }
+      title = 'Şut şansı'; text = 'Ceza sahası önünde top sende.';
+    } else if (this.type === 'freekick') {
+      const d = rnd(18, 25); this.spot.set(side * rnd(1, 9), BALL_R, GZ + d);
+      // baraj: 9,15 metrede, topla yakın direk arasında
+      const tx = side * 1.6 - this.spot.x, tz = GZ - this.spot.z, tl = Math.hypot(tx, tz), ux = tx / tl, uz = tz / tl, n = lv >= 3 ? 4 : 3;
+      for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 0.66; this.addDef(this.spot.x + ux * 9.15 - uz * o, this.spot.z + uz * 9.15 + ux * o, true); }
+      title = 'Frikik'; text = 'Faul! Barajı aş, kaleciyi geç.';
     } else {
-      this.move = { type: 'drag', t: 0, dur: 0.46, dir: 0, from: this.px, to: this.px }; this.sfx.drag();
-      if (tg && tg.type === 'lunge') this.beat(tg, this.ttc(tg) <= PERFECT, this.px > tg.x ? 1 : -1);
-      else if (!tg) { const n = this.target(this.window + 0.4); if (n && n.type === 'lunge' && !n.warned) { n.warned = true; this.early(); } }
+      this.spot.set(side * rnd(2, 9), BALL_R, GZ + rnd(31, 36));
+      this.mx = -side * rnd(5, 9); this.mz = GZ + rnd(23, 26); this.mTo.set(-side * rnd(1, 4), GZ + 9); this.mGot = false; this.mPhase = 0;
+      this.mate.root.visible = true;
+      this.addDef((this.spot.x + this.mx) / 2 + rnd(-1.5, 1.5), GZ + rnd(27, 29)); this.addDef(-side * rnd(-2, 3), GZ + rnd(14, 17));
+      if (lv >= 2) this.addDef(this.mTo.x + rnd(3, 5) * side, GZ + rnd(11, 13));
+      title = 'Pas'; text = 'Arkadaşın koşuya kalkacak. Topu önüne at.';
     }
+    this.ball.visible = true; this.ball.position.copy(this.spot); this.bv.set(0, 0, 0); this.live = false; this.inGoal = false; this.hitPost = false; this.byMate = false; this.curveT = 0;
+    const fl = Math.hypot(this.spot.x, this.spot.z - GZ); this.fwd.set(-this.spot.x / fl, (GZ - this.spot.z) / fl);
+    this.kState = 'set'; this.plan = null; this.kx = clamp(this.spot.x * 0.12, -1.5, 1.5); this.kz = GZ + 0.7;
+    this.kicker = 'player'; this.kickT = 9; this.aiming = false; this.power = 0; this.arrow.visible = false;
+    this.mode = 'intro'; this.t = 0;
+    this.hooks.board(this.us, this.them, this.minutes[this.idx], this.rival, this.results);
+    this.hooks.prompt(`${this.minutes[this.idx]}' ${title}`, news + text);
+    // kamera yeni noktaya geçer
+    this.camPos.set(this.spot.x - this.fwd.x * 9, 5.5, this.spot.z - this.fwd.y * 9); this.camLook.set(this.spot.x + this.fwd.x * 8, 1, this.spot.z + this.fwd.y * 8);
   }
 
-  private early() { this.hooks.popup('ERKEN!', 'warn'); this.sfx.early(); if (this.mult > 1) { this.mult--; this.hooks.hud(this.score(), this.mult, this.stats.goals); } }
-  private score() { return Math.floor(this.dist) + this.bonus; }
+  private finish() {
+    this.mode = 'done'; this.sfx.whistle(true);
+    const rating = clamp(5.5 + this.goals * 1.4 + this.assists * 1.0 - this.results.filter(r => r === 'miss').length * 0.35 + (this.us > this.them ? 0.5 : this.us < this.them ? -0.4 : 0), 3, 10);
+    this.hooks.over({ us: this.us, them: this.them, goals: this.goals, assists: this.assists, rating: Math.round(rating * 10) / 10, rival: this.rival });
+  }
 
-  private beat(d: Def, perfect: boolean, dir: number) {
-    d.state = 'beaten'; d.t = 0; d.perfect = perfect; d.beatDir = dir; d.hint.visible = false;
-    this.stats.dribbles++;
-    if (perfect) { this.stats.perfects++; this.mult = Math.min(5, this.mult + 1); }
-    this.stats.bestMult = Math.max(this.stats.bestMult, this.mult);
-    const pts = (perfect ? 250 : 100) * this.mult; this.bonus += pts;
-    const p = new THREE.Vector3(d.x, 1.0, -(d.s - this.dist));
-    if (perfect) {
-      this.slow = 0.26; this.fovKick = -7; this.sfx.perfect(this.stats.dribbles);
-      this.fx.emit(p, 0xffd23f, 34, 6, 0.9, 0.8, 7); this.fx.emit(p, 0xff5fa2, 16, 4, 1.2, 0.7, 5);
-      this.hooks.popup(`MÜKEMMEL! +${pts}`, 'perfect');
-      try { navigator.vibrate?.(25); } catch { /* yok */ }
-    } else {
-      this.sfx.good(this.stats.dribbles); this.fx.emit(p, 0xffffff, 12, 3.5, 0.8, 0.5);
-      this.hooks.popup(`İYİ +${pts}`, 'good');
+  // ---------- kontrol: geri çek, bırak, topun vuruş noktasını seç ----------
+  /** dx, dy: parmağın bastığı yerden kayması (piksel). h: ekran yüksekliği */
+  aimDrag(dx: number, dy: number, h: number) {
+    if (this.mode !== 'aim') return;
+    const len = Math.hypot(dx, dy); this.aiming = len > 14;
+    if (!this.aiming) { this.arrow.visible = false; return; }
+    // sapan gibi: çekişin tersine gider. Ekranın yukarısı = kameranın baktığı yön.
+    const a = Math.atan2(-dx, Math.max(dy, -len * 0.2)), f = this.fwd, c = Math.cos(a), s = Math.sin(a);
+    this.aimDir.set(f.x * c - f.y * s, f.y * c + f.x * s).normalize();
+    this.power = clamp((len - 14) / (h * 0.27), 0.05, 1);
+  }
+  aimRelease() {
+    if (this.mode !== 'aim') return;
+    if (!this.aiming || this.power < 0.08) { this.aiming = false; this.arrow.visible = false; return; }
+    this.mode = 'contact'; this.t = 0; this.aiming = false; this.hooks.contact(true, CONTACT_TIME); this.hooks.prompt('', 'Topun neresine vuracaksın?'); vib(15);
+  }
+  /** cx, cy: topun üzerindeki vuruş noktası (-1..1). Alt = havalanır, yan = falso. */
+  contact(cx: number, cy: number) {
+    if (this.mode !== 'contact') return;
+    this.hooks.contact(false, 0); this.hooks.prompt('', '');
+    const l = Math.hypot(cx, cy); if (l > 1) { cx /= l; cy /= l; }
+    const p = this.power, off = Math.min(1, Math.hypot(cx, cy));
+    const v = (9 + 24 * p) * (1 - 0.12 * off), th = clamp(0.13 - cy * (cy < 0 ? 0.33 : 0.115), 0.015, 0.5) * (0.6 + 0.4 * p);
+    const d = this.aimDir, qx = -d.y, qz = d.x;
+    this.launch(d.x, d.y, v, th);
+    const k = -cx * 11 * (0.35 + 0.65 * p); this.curve.set(qx * k, 0, qz * k); this.curveT = Math.abs(cx) > 0.12 ? 1.7 : 0;
+    this.kicker = 'player'; this.kickT = 0; this.byMate = false;
+    this.hooks.popup(Math.round(v * 3.6) + ' km/s', 'good');
+    this.hitstop = 0.05 + 0.04 * p; this.shake = 0.12 + 0.25 * p; this.sfx.strike(p); vib(30 + Math.round(60 * p));
+    this.fx.emit(this.ball.position.clone(), 0xffffff, 8 + Math.round(14 * p), 3 + 3 * p, 0.7, 0.4);
+    this.planKeeper(v);
+  }
+
+  private launch(dx: number, dz: number, v: number, th: number) {
+    this.bv.set(dx * v * Math.cos(th), v * Math.sin(th), dz * v * Math.cos(th)); this.curveT = 0;
+    this.mode = 'fly'; this.live = true; this.sinceKick = 0; this.inGoal = false; this.arrow.visible = false; this.runLine.visible = false;
+  }
+
+  /** Kaleci topun yolunu hesaplar: kendi hizasına ne zaman, nerede gelecek? */
+  private planKeeper(v: number) {
+    this.plan = null; if (this.kState !== 'set') return;
+    const p = this.ball.position.clone(), w = this.bv.clone(); let T = 0, ct = this.curveT;
+    for (; T < 3 && p.z > this.kz; T += 0.01) {
+      if (ct > 0) { w.addScaledVector(this.curve, 0.01); ct -= 0.01; }
+      w.y -= G * 0.01; p.addScaledVector(w, 0.01);
+      if (p.y < BALL_R) { p.y = BALL_R; if (w.y < -1.2) { w.y *= -0.58; w.x *= 0.86; w.z *= 0.86; ct = 0; } else { w.y = 0; w.x *= 0.991; w.z *= 0.991; } }
+      if (w.z > -0.5) return;
     }
-    this.sfx.crowd(0.2 + this.mult * 0.18);
-    this.hooks.hud(this.score(), this.mult, this.stats.goals);
-  }
-
-  // ---------- şut ----------
-  private shootBall(dir: Dir) {
-    const gap = this.goalS - this.dist, k = this.kKind, perfect = gap <= BOX;
-    let tx = 0, ty = 0.4, goal = false, arc = 0.5;
-    if (dir === 'l' || dir === 'r') { const sgn = dir === 'r' ? 1 : -1; tx = sgn * 3.0; ty = perfect ? 1.95 : 1.0; goal = k === 'center' || (k === 'left' && sgn > 0) || (k === 'right' && sgn < 0); this.px += sgn * 0.01; }
-    else if (dir === 'u') { tx = this.px * 0.3; ty = 1.5; arc = 3.2; goal = k === 'rush'; }   // aşırtma
-    const ks = this.goalS - 1 - this.kOut;
-    this.shot = { t: 0, dur: goal ? 0.55 : Math.max(0.25, 0.55 * (ks - this.dist) / Math.max(1, gap)), from: this.ball.position.clone(), fromS: this.dist - this.ball.position.z, toS: goal ? this.goalS + 1.2 : ks - 0.3, tx: goal ? tx : this.kx + (tx - this.kx) * (k === 'rush' ? 0.2 : 0.75), ty: goal ? ty : Math.min(ty, 1.6), arc, goal, perfect };
-    this.kDive = Math.abs(tx - this.kx) > 0.8 ? Math.sign(tx - this.kx) : 0;
-    this.move = null; this.buffer = null; this.slow = 0; this.sfx.strike(perfect ? 1 : 0.6); this.shake = 0.25; this.fovKick = -6;
-    this.fx.emit(this.ball.position.clone(), 0xffffff, 16, 5, 0.7, 0.4);
-    try { navigator.vibrate?.(40); } catch { /* yok */ }
-  }
-
-  private scored() {
-    const s = this.shot!; this.mode = 'goal'; this.goalT = 0; this.stats.goals++; this.shootPhase = false;
-    if (s.perfect) { this.mult = Math.min(5, this.mult + 1); this.stats.perfects++; } this.stats.bestMult = Math.max(this.stats.bestMult, this.mult);
-    const pts = (s.perfect ? 1500 : 1000) * this.mult; this.bonus += pts;
-    this.hooks.popup('GOOOL!', 'perfect'); this.hooks.popup((s.perfect ? 'CEZA SAHASINDAN! +' : '+') + pts, 'good');
-    this.sfx.goal(); this.sfx.netSwish(); this.sfx.crowd(1); this.world.netKick(); this.slow = 0.6; this.shake = 0.35;
-    const gz = -(this.goalS - this.dist);
-    for (let i = 0; i < 4; i++) this.fx.emit(new THREE.Vector3((Math.random() - 0.5) * 7, 3 + Math.random() * 2, gz + 2), [0xffd23f, 0xff4d6d, 0x39f0c8, 0xffffff][i], 30, 7, 0.8, 1.6, 5);
-    try { navigator.vibrate?.([40, 50, 40, 50, 120]); } catch { /* yok */ }
-    this.hooks.hud(this.score(), this.mult, this.stats.goals);
-  }
-
-  private fail(reason: string, side: number) {
-    this.mode = 'dead'; this.deadT = 0; this.stats.reason = reason; this.shootPhase = false;
-    this.slow = 0.5; this.shake = 0.5; this.sfx.fail(); this.sfx.crowd(0.05);
-    this.ballVel.set(side * (2 + Math.random() * 2), 3.2, -3 - this.speed * 0.25);
-    try { navigator.vibrate?.([40, 40, 80]); } catch { /* yok */ }
-    this.stats.score = this.score(); this.stats.dist = Math.floor(this.dist);
-  }
-
-  /** Kale, kaleci ve şut anı */
-  private updateGoal(dt: number) {
-    this.world.setStage(-(this.circleS - this.dist), this.goalS ? -(this.goalS - this.dist) : null);
-    const k = this.keeper;
-    if (!this.goalS) { k.root.visible = false; this.kHint.visible = false; return; }
-    const gap = this.goalS - this.dist, alive = this.mode === 'run', s = this.shot;
-    if (alive && !s) {
-      const clear = !this.defs.some(d => d.state === 'approach' && d.s > this.dist);
-      if (!this.shootPhase && gap < 28 && clear) { this.shootPhase = true; this.move = null; this.hooks.popup('ŞUT ÇEK!', 'good'); this.sfx.crowd(0.7); }
-      const tx = this.kKind === 'left' ? -1.5 : this.kKind === 'right' ? 1.5 : this.kKind === 'rush' ? this.px * 0.5 : this.px * 0.15;
-      this.kx += Math.max(-4 * dt, Math.min(4 * dt, tx - this.kx));
-      if (this.kKind === 'rush' && this.shootPhase) this.kOut = Math.min(gap - 2, this.kOut + 6.5 * dt);
-      if (this.shootPhase && (this.goalS - 1 - this.kOut) - this.dist < 2.6) { k.root.position.x = this.kx; this.fail('Kaleci topu aldı', this.px >= this.kx ? 1 : -1); }
-    }
-    if (s && this.mode !== 'dead') {
-      s.t += dt; const u = Math.min(1, s.t / s.dur);
-      if (this.kDive) this.kx += this.kDive * (s.goal ? 3.2 : 7) * dt;
-      if (u >= 1 && this.mode === 'run') { if (s.goal) this.scored(); else { this.sfx.glove(); this.fail('Kaleci kurtardı', this.kDive || 1); this.hooks.popup('KALECİ KURTARDI', 'warn'); } }
-    }
-    // kaleci duruşu
-    const kz = -(this.goalS - 1 - this.kOut - this.dist);
-    k.root.visible = kz > -170; k.root.position.set(this.kx, 0, kz);
-    let p: Pose;
-    if (s && this.kDive) { p = sideFallPose(s.t * 1.6, this.kDive); p.y += Math.min(1.2, s.ty * 0.6) * Math.sin(Math.PI * Math.min(1, s.t / (s.dur + 0.2))); p.shL = p.shR = 2.9; p.saL = p.saR = 0.25; }
-    else if (s) p = pose({ y: s.arc > 2 ? 0.35 * Math.sin(Math.PI * Math.min(1, s.t / s.dur)) : 0, shL: 2.6, shR: 2.6, saL: 0.3, saR: 0.3, thL: 0.3, thR: 0.3, knL: 0.5, knR: 0.5 });
-    else if (this.kKind === 'rush' && this.shootPhase) p = runPose(this.time * 14, 1, 0.35);
-    else { p = jockeyPose(this.time, this.kKind === 'left' ? -1.6 : this.kKind === 'right' ? 1.6 : 0); p.saL = p.saR = 1.1; if (this.kKind === 'right') { p.saL = 1.5; p.elL = 0.1; } if (this.kKind === 'left') { p.saR = 1.5; p.elR = 0.1; } }
-    k.setPose(p, dt, 18);
-    const show = this.hints && alive && !s && gap < 45;
-    this.kHint.visible = show;
-    if (show) { this.kHint.material = hintMaterial(this.kKind === 'left' ? 'r' : this.kKind === 'right' ? 'l' : this.kKind === 'rush' ? 'u' : 'lr'); this.kHint.position.set(this.kx, 3.2, kz); this.kHint.scale.setScalar(this.shootPhase ? 1.5 + 0.15 * Math.sin(this.time * 30) : 1.1); }
-  }
-
-  private tackled(d: Def) {
-    this.mode = 'dead'; this.deadT = 0; d.state = 'won'; d.t = 0; d.hint.visible = false; this.stats.reason = 'Top kaptırıldı';
-    this.slow = 0.5; this.shake = 0.5; this.sfx.fail(); this.sfx.crowd(0.05);
-    const side = d.x >= this.px ? 1 : -1;
-    this.ballVel.set(side * (2 + Math.random() * 2), 3.2, -3 - this.speed * 0.25);
-    this.fx.emit(new THREE.Vector3(this.px, 0.4, -0.5), 0xff4d6d, 22, 4, 1, 0.6);
-    try { navigator.vibrate?.([40, 40, 80]); } catch { /* yok */ }
-    this.stats.score = this.score(); this.stats.dist = Math.floor(this.dist);
-  }
-
-  // ---------- rakip üretimi ----------
-  private add(type: DType, s: number, lane: number) {
-    const fb = this.pool.pop() || new Footballer(this.rival);
-    fb.root.scale.setScalar(type === 'lunge' ? 1.14 : 1); fb.baseYaw = 0; fb.away = false;
-    const marker = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: MARK_COL[type], transparent: true, opacity: 0.5, depthWrite: false, fog: false }));
-    marker.rotation.x = -Math.PI / 2; marker.visible = type !== 'static';
-    const hint = new THREE.Sprite(hintMaterial('lr')); hint.scale.setScalar(1.0); hint.visible = false; hint.renderOrder = 10;
-    const d: Def = { type, s, x: LANE_X[lane], fb, state: 'approach', t: Math.random() * 5, cover: Math.random() < 0.5 ? 1 : -1, sliding: false, perfect: false, beatDir: 0, force: false, phase: 0, marker, hint, warned: false };
-    fb.setPose(type === 'static' ? this.readyPose(d) : jockeyPose(0), 0);
-    this.scene.add(fb.root, marker, hint); this.defs.push(d);
-  }
-
-  private spawn() {
-    const s = this.nextS, n = this.encounters++, level = Math.floor(n / 6), r = Math.random;
-    const intro = ['track', 'track', 'static', 'slide', 'track', 'lunge', 'wall', 'lean'];
-    let kind = intro[n];
-    if (!kind) {
-      const bag: string[] = ['track', 'track', 'slide', 'slide', 'lunge', 'lunge', 'lean', 'lean', 'wall', 'cover', 'cover'];
-      if (level >= 2) bag.push('double', 'double', 'wallslide');
-      if (level >= 3) bag.push('slidelunge', 'slidelunge', 'double');
-      kind = bag[(r() * bag.length) | 0];
-    }
-    const L = this.lane; let extra = 0;
-    switch (kind) {
-      case 'static': this.add('static', s, L); break;
-      case 'wall': { const gap = (r() * 3) | 0; for (let i = 0; i < 3; i++) if (i !== gap) this.add('static', s, i); break; }
-      case 'cover': this.add('track', s, L); this.add('static', s + 3.4, r() < 0.5 ? 0 : 2); break;
-      case 'double': extra = Math.max(10, this.speed * 0.8); this.add('track', s, L); this.add(r() < 0.5 ? 'track' : 'lean', s + extra, L); break;
-      case 'slidelunge': extra = this.speed; this.add('slide', s, L); this.add('lunge', s + extra + 6, L); extra += 6; break;
-      case 'wallslide': { extra = this.speed * 0.9; const gap = (r() * 3) | 0; for (let i = 0; i < 3; i++) if (i !== gap) this.add('static', s, i); this.add('slide', s + extra + 4, gap); extra += 4; break; }
-      default: this.add(kind as DType, s, L);
-    }
-    this.window = Math.max(0.42, 0.56 - level * 0.015);
-    this.nextS = s + extra + this.speed * Math.max(1.05, 2.0 - level * 0.12);
-  }
-
-  // ---------- pozlar ----------
-  private readyPose(d: Def): Pose {
-    const w = Math.sin(d.t * 3);
-    return pose({ pitch: 0.18, roll: 0.05 * w, thL: 0.35, thR: 0.35, knL: 0.6, knR: 0.6, abL: 0.3, abR: 0.3, saL: 0.75 + 0.1 * w, saR: 0.75 - 0.1 * w, elL: 0.6, elR: 0.6 });
-  }
-
-  private defPose(d: Def, gap: number): Pose {
-    if (d.state === 'won') { const w = Math.sin(d.t * 12); return pose({ shL: 2.9, shR: 2.9, saL: 0.4 + 0.1 * w, saR: 0.4 - 0.1 * w, elL: 0.3, elR: 0.3, y: Math.abs(w) * 0.08, pitch: -0.1 }); }
-    if (d.state === 'beaten') {
-      if (d.type === 'slide') return slidePose();
-      if (d.type === 'lunge') return diveFallPose(d.t);
-      if (d.t < 0.16) { const p = jockeyPose(d.t, -d.beatDir * 3); if (d.beatDir > 0) p.abR = 0.9; else p.abL = 0.9; return p; }
-      if (d.perfect) return sitFallPose(d.t - 0.16);
-      // dengesini kaybedip sendeler, sonra yana devrilir
-      const k = d.t - 0.16;
-      if (k < 0.35) return pose({ roll: -d.beatDir * 0.55, yaw: d.beatDir * 1.2 * (k / 0.35), pitch: 0.35, thL: 0.7, thR: -0.4, knL: 0.9, knR: 0.6, shL: 1.5, shR: -0.8, saL: 1.3, saR: 1.2, elL: 0.3, elR: 0.3 });
-      return { ...sideFallPose(k - 0.35, -d.beatDir), yaw: d.beatDir * 1.2 };
-    }
-    const active = gap < ACTIVATE[d.type];
-    switch (d.type) {
-      case 'static': return this.readyPose(d);
-      case 'track': return jockeyPose(d.t);
-      case 'lean': { const p = jockeyPose(d.t, d.cover * 1.6); if (d.cover > 0) { p.saL = 1.5; p.elL = 0.1; p.saR = 0.4; } else { p.saR = 1.5; p.elR = 0.1; p.saL = 0.4; } return p; }
-      case 'slide': return d.sliding ? slidePose() : active ? runPose(d.phase, 1, 0.25) : this.readyPose(d);
-      case 'lunge': if (active) return runPose(d.phase, 1.1, 0.42);
-        { const w = Math.sin(d.t * 7); return pose({ pitch: 0.5, thL: 0.7 + 0.25 * w, thR: 0.1 - 0.25 * w, knL: 0.9 + 0.3 * w, knR: 0.5, saL: 0.5, saR: 0.5, elL: 1.3, elR: 1.3, shL: -0.3, shR: -0.3, head: -0.4 }); }
-    }
+    if (p.z > this.kz) return;
+    const react = Math.max(0.16, 0.27 - this.level * 0.012), vmax = Math.min(7.6, 6 + this.level * 0.18), acc = 24, tv = vmax / acc, tm = Math.max(0, T - react);
+    const can = tm < tv ? 0.5 * acc * tm * tm : 0.5 * acc * tv * tv + vmax * (tm - tv);
+    const lateral = Math.abs(p.x - this.kx), need = Math.hypot(lateral, Math.max(0, p.y - 1.5) * 0.9) - 0.9;
+    const onTarget = Math.abs(p.x) < GOAL_W + 0.9 && p.y < GOAL_H + 0.6, reach = onTarget && need <= can && p.y < 2.8;
+    const sp = w.length(), kind = sp < 19 || (need < -0.2 && sp < 25) ? 'catch' : can - need < 0.3 ? 'tip' : 'parry';
+    this.plan = { T, x: p.x, y: p.y, from: this.kx, dir: Math.sign(p.x - this.kx) || 1, dist: reach ? Math.max(0, lateral - 0.25) : Math.min(lateral, can + 0.4), reach, kind, done: false, dive: onTarget && lateral > 0.85 };
+    if (onTarget || Math.abs(p.x) < 6) { this.kState = 'dive'; this.kT = 0; }
   }
 
   // ---------- ana döngü ----------
   update(dtReal: number) {
-    this.time += dtReal;
+    this.clock += dtReal;
     if (this.mode === 'menu') return this.updateMenu(dtReal);
+    if (this.hitstop > 0) { this.hitstop -= dtReal; this.updateCamera(dtReal); return; }
     this.slow = Math.max(0, this.slow - dtReal);
-    const dt = dtReal * (this.slow > 0 ? 0.3 : this.shootPhase && !this.shot ? 0.5 : 1);   // şut anında zaman yavaşlar
-    const alive = this.mode === 'run';
+    const dt = this.mode === 'contact' ? dtReal * 0.05 : dtReal * (this.slow > 0 ? 0.35 : 1);
+    this.t += dtReal; this.kickT += dt;
 
-    // hız
-    let mul = 1;
-    const m = this.move;
-    if (m && m.type === 'drag') { const u = m.t / m.dur; mul = u < 0.5 ? 0.3 : 0.3 + 0.7 * ((u - 0.5) / 0.5); }
-    if (alive && !this.shot) this.speed += (Math.min(17, 10 + this.stats.dribbles * 0.22) - this.speed) * Math.min(1, dt * 2);
-    else { this.deadT += dtReal; this.speed *= Math.exp(-4 * dt); }
-    let v = this.speed * mul; if (this.goalS && this.dist + v * dt > this.goalS - 4) v = 0;
-    const scroll = v * dt;
-    this.dist += scroll; this.phase += scroll * 1.85;
+    if (this.mode === 'intro' && this.t > 1.5) { this.mode = 'aim'; this.hooks.prompt('', this.type === 'pass' ? 'Geri çek, arkadaşının önüne nişan al, bırak' : 'Geri çek, nişan al, bırak'); }
+    if (this.mode === 'contact' && this.t > CONTACT_TIME) this.contact(0, 0);
+    if (this.mode === 'result' && this.t > 1.9) this.nextMoment();
 
-    // oyuncu hareketi
-    if (m) {
-      m.t += dt;
-      if (m.type === 'cut' || m.type === 'spin') this.px = m.from + (m.to - m.from) * ease(m.t / (m.dur * 0.85));
-      if (m.t >= m.dur) { this.move = null; if (this.buffer && alive) { const b = this.buffer; this.buffer = null; this.doMove(b); } }
+    // nişan oku
+    this.arrow.visible = this.mode === 'aim' && this.aiming || this.mode === 'contact';
+    if (this.arrow.visible) {
+      const L = 2 + this.power * 9; this.arrow.position.set(this.spot.x, 0.04, this.spot.z); this.arrow.rotation.y = Math.atan2(this.aimDir.x, this.aimDir.y);
+      this.arrow.getObjectByName('shaft')!.scale.set(1, L, 1); this.arrow.getObjectByName('head')!.position.z = L;
+      this.arrowMat.color.setHex(this.power > 0.9 ? 0xff4d6d : this.power > 0.6 ? 0xffd23f : 0xf4fff0);
     }
-    this.player.root.position.x = this.px;
-    this.player.setPose(this.playerPose(), dt, alive ? 26 : 12);
-
-    if (alive) {
-      while (this.left > 0 && this.dist + 78 >= this.nextS) {
-        this.spawn();
-        if (--this.left === 0) { this.goalS = this.nextS + 12; this.kx = 0; this.kKind = this.stage === 1 ? 'center' : (['center', 'left', 'right', 'rush', 'left', 'right'] as KKind[])[(Math.random() * (this.stage === 2 ? 3 : 6)) | 0]; }
-      }
-      this.hooks.hud(this.score(), this.mult, this.stats.goals);
-    } else if (this.mode === 'goal') {
-      this.goalT += dtReal;
-      if (this.goalT > 2.4) {   // sıradaki atak: santra
-        this.stage++; this.clearDefs(); this.setupStage(); this.mode = 'run'; this.speed = Math.max(this.speed, 9);
-        this.hooks.stage(this.stage); this.hooks.popup(this.stage + '. ATAK', 'good'); this.sfx.whistle(); this.sfx.crowd(0.3);
-      }
-    } else if (this.deadT > 1.25 && !this.overSent) { this.overSent = true; this.sfx.whistle(true); this.hooks.over(this.stats); }
-
-    this.updateDefs(dt, v);
-    this.updateGoal(dt);
-    this.updateBall(dt, scroll, v);
-    this.world.update(this.dist, dt);
-    this.fx.update(dt, scroll);
-    if (alive && this.mult >= 4) this.fx.emit(this.ball.position, this.mult >= 5 ? 0xff7a1a : 0xffd23f, 1, 0.6, 1, 0.35, 0);
-
-    // kamera
-    this.camX += (this.px * 0.62 - this.camX) * Math.min(1, dtReal * 7);
-    this.shake = Math.max(0, this.shake - dtReal); this.fovKick *= Math.exp(-6 * dtReal);
-    const sh = this.shake * 0.5, cam = this.camera;
-    cam.position.set(this.camX + (Math.random() - 0.5) * sh, 5.7 + (Math.random() - 0.5) * sh, 5.9);
-    cam.lookAt(this.camX * 1.1, 1.0, -7.5);
-    cam.rotation.z += (this.px - this.camX / 0.62) * -0.035;
-    const fov = 62 + (this.speed - 10) * 1.1 + this.fovKick;
-    if (Math.abs(cam.fov - fov) > 0.01) { cam.fov += (fov - cam.fov) * Math.min(1, dtReal * 10); cam.updateProjectionMatrix(); }
+    this.updatePeople(dt);
+    this.updateKeeper(dt);
+    if (this.mode === 'fly' || this.mode === 'result') this.updateBall(dt);
+    this.world.update(dt); this.fx.update(dt, 0); this.world.follow(this.spot.x, this.spot.z - 6);
+    this.updateCamera(dtReal);
   }
 
-  private playerPose(): Pose {
-    if (this.mode === 'dead') { const k = Math.min(1, this.deadT / 0.4); return pose({ g: 0, y: -0.62 * k, pitch: 1.4 * k, thL: 0.4, thR: -0.3, knL: 0.8, knR: 0.4, shL: 2.4, shR: 2.0, saL: 0.5, saR: 0.6, elL: 0.4, elR: 0.3 }); }
-    if (this.mode === 'goal') { const w = Math.sin(this.time * 12); return pose({ shL: 2.9, shR: 2.9, saL: 0.45, saR: 0.45, elL: 0.2, elR: 0.2, y: Math.abs(w) * 0.14, pitch: -0.1 }); }
-    if (this.shot && this.shot.t < 0.4) { const sw = Math.min(1, this.shot.t / 0.1), u = this.shot.t / 0.4; return pose({ pitch: -0.12 + 0.3 * sw, twist: -0.5 + sw, thR: -0.9 + 2.5 * sw - 0.7 * Math.max(0, u - 0.5), knR: 1.4 * (1 - sw), thL: 0.15, knL: 0.35, shL: 1.2 - 1.6 * sw, shR: -0.9 + 0.6 * sw, saL: 1.1, saR: 0.8, elL: 0.3, elR: 0.4 }); }
-    const p = runPose(this.phase, this.shot ? Math.min(1, this.speed / 8) : 1, 0.2), m = this.move;
-    if (!m) return p;
-    const u = m.t / m.dur, k = Math.sin(Math.PI * Math.min(1, u));
-    if (m.type === 'cut' || m.type === 'bump') { p.roll = m.dir * 0.42 * k; p.twist += m.dir * -0.3 * k; if (m.dir > 0) { p.abL += 0.5 * k; p.saL = 0.9; } else { p.abR += 0.5 * k; p.saR = 0.9; } }
-    else if (m.type === 'spin') { p.yaw = -m.dir * Math.PI * 2 * ease(u); p.roll = m.dir * 0.25 * k; p.saL = p.saR = 0.9; p.pitch = 0.1; }
-    else if (m.type === 'hop') return pose({ g: 0, y: 0.85 * 4 * u * (1 - u), pitch: 0.12, thL: 1.15, thR: 0.7, knL: 1.6, knR: 1.3, shL: 0.4, shR: 0.4, saL: 1.3, saR: 1.3, elL: 0.5, elR: 0.5 });
-    else if (m.type === 'drag') { if (u < 0.55) return pose({ pitch: -0.14, twist: 0.25, thR: 0.6, knR: 0.5, thL: -0.25, knL: 0.35, saL: 1.0, saR: 0.8, elL: 0.5, elR: 0.5, shL: -0.3, shR: 0.2 }); }
-    return p;
+  private updatePeople(dt: number) {
+    // vuran oyuncu: topun arkasında bekler, vuruşta adımını atar
+    const f = this.fwd, d = this.mode === 'aim' && this.aiming || this.mode === 'contact' || this.kickT < 1 ? this.aimDir : f;
+    const back = this.kickT < 0.5 && this.kicker === 'player' ? 0.45 : 1.0;
+    this.player.root.position.set(this.spot.x - d.x * back - d.y * 0.22, 0, this.spot.z - d.y * back + d.x * 0.22);
+    this.player.baseYaw = Math.atan2(d.x, d.y);
+    this.player.setPose(this.kickT < 0.42 && this.kicker === 'player' ? this.kickPose(this.kickT) : this.celebrating() ? this.cheer() : this.readyPose(), dt, this.kickT < 0.4 ? 34 : 14);
+
+    // savunmacılar: şutta yerinde, barajda sıçrar, pasta topa koşar
+    for (const o of this.defs) {
+      const b = this.ball.position; let p: Pose;
+      if (o.wall) { const j = this.live && this.sinceKick < 0.7 && !this.byMate ? Math.sin(Math.PI * this.sinceKick / 0.7) * 0.5 : 0; p = pose({ y: j, shL: 0.5, shR: 0.5, saL: -0.1, saR: -0.1, elL: 0.9, elR: 0.9, thL: 0.05 + j, thR: 0.05 + j, knL: j * 1.5, knR: j * 1.5, g: j > 0.02 ? 0 : 1 }); }
+      else if (this.type === 'pass' && this.live && !this.byMate) {
+        const dx = b.x - o.x, dz = b.z - o.z, l = Math.hypot(dx, dz);
+        if (l < 9 && l > 0.3) { const s = Math.min(6.2, 4.6 + this.level * 0.2) * dt; o.x += dx / l * s; o.z += dz / l * s; o.phase += s * 2; p = runPose(o.phase, 0.9, 0.2); } else p = jockeyPose(this.clock + o.phase);
+      } else p = jockeyPose(this.clock * 0.6 + o.phase);
+      o.fb.root.position.set(o.x, 0, o.z); o.fb.baseYaw = Math.atan2(this.spot.x - o.x, this.spot.z - o.z); o.fb.setPose(p, dt, 14);
+    }
+
+    // takım arkadaşı
+    if (this.mate.root.visible) {
+      let p: Pose; const m = this.mate;
+      const running = this.type === 'pass' && (this.mode === 'fly' || this.mode === 'contact') && !this.mGot && !this.byMate;
+      if (this.mode === 'aim' || this.mode === 'intro') {
+        // koşu çizgisi: nereye koşacağını gösterir
+        const lx = this.mTo.x - this.mx, lz = this.mTo.y - this.mz; this.runLine.visible = true; this.runLine.position.set(this.mx, 0.035, this.mz); this.runLine.rotation.y = Math.atan2(lx, lz); this.runLine.scale.set(1, Math.hypot(lx, lz), 1);
+        const w = Math.sin(this.clock * 6); p = pose({ shR: 2.7 + 0.2 * w, saR: 0.3, elR: 0.2, thL: 0.3, knL: 0.5, pitch: 0.15 }); m.baseYaw = Math.atan2(lx, lz);
+      } else if (running && this.mode === 'fly') {
+        let tx = this.mTo.x, tz = this.mTo.y; const b = this.ball.position, bd = Math.hypot(b.x - this.mx, b.z - this.mz);
+        if (bd < 5 && b.y < 1.2) { tx = b.x + this.bv.x * 0.2; tz = b.z + this.bv.z * 0.2; }   // top yakınsa üstüne gider
+        const dx = tx - this.mx, dz = tz - this.mz, l = Math.hypot(dx, dz), s = 6.8 * dt;
+        if (l > 0.3) { this.mx += dx / l * s; this.mz += dz / l * s; this.mPhase += s * 1.8; m.baseYaw = Math.atan2(dx, dz); }
+        p = runPose(this.mPhase, 1, 0.22);
+        if (bd < 1.25 && b.y < 1.0 && this.live && this.sinceKick > 0.25) this.mateShoots();
+      } else if (this.kickT < 0.42 && this.kicker === 'mate') p = this.kickPose(this.kickT);
+      else p = this.celebrating() ? this.cheer() : this.readyPose();
+      m.root.position.set(this.mx, 0, this.mz); m.setPose(p, dt, 16);
+    }
+  }
+  private readyPose() { const w = Math.sin(this.clock * 2.4); return pose({ pitch: 0.1, thL: 0.25, thR: -0.1, knL: 0.35, knR: 0.25, abL: 0.1, abR: 0.1, saL: 0.3 + 0.03 * w, saR: 0.3 - 0.03 * w, elL: 0.5, elR: 0.5 }); }
+  private celebrating() { return this.mode === 'result' && this.results[this.results.length - 1] !== 'miss'; }
+  private cheer() { const w = Math.sin(this.clock * 12); return pose({ shL: 2.9, shR: 2.9, saL: 0.45, saR: 0.45, elL: 0.2, elR: 0.2, y: Math.abs(w) * 0.14, pitch: -0.1 }); }
+  private kickPose(t: number) {
+    const u = t / 0.42, sw = clamp(t / 0.1, 0, 1), pw = 0.55 + 0.45 * this.power;
+    return pose({ pitch: -0.12 + 0.3 * sw, twist: (-0.5 + sw) * pw, thR: (-0.9 + 2.5 * sw - 0.7 * Math.max(0, u - 0.5)) * pw, knR: 1.4 * (1 - sw), thL: 0.15, knL: 0.35, abL: 0.12, shL: 1.2 - 1.6 * sw, shR: -0.9 + 0.6 * sw, saL: 1.1, saR: 0.8, elL: 0.3, elR: 0.4, y: 0.06 * Math.sin(Math.PI * u) });
   }
 
-  private updateBall(dt: number, scroll: number, v: number) {
-    const b = this.ball;
-    if (this.mode === 'dead') {
-      this.ballVel.y -= 12 * dt; b.position.addScaledVector(this.ballVel, dt); b.position.z += scroll * 0.2;
-      if (b.position.y < BALL_R) { b.position.y = BALL_R; this.ballVel.y *= -0.5; this.ballVel.x *= 0.8; this.ballVel.z *= 0.8; }
-      b.rotation.x -= this.ballVel.z * dt * 4; return;
+  /** Pas ulaştı: arkadaşın tek vuruşla uzak köşeye vurur */
+  private mateShoots() {
+    this.mGot = true; this.byMate = true; this.kicker = 'mate'; this.kickT = 0; this.power = 0.9;
+    const b = this.ball.position; b.y = BALL_R;
+    const tx = (this.kx > 0 ? -1 : 1) * rnd(2.3, 3.2), ty = rnd(0.4, 1.7), v = 26;
+    let dx = tx - b.x, dz = GZ - b.z; const D = Math.hypot(dx, dz); dx /= D; dz /= D;
+    const disc = v ** 4 - G * (G * D * D + 2 * (ty - BALL_R) * v * v), th = disc > 0 ? Math.atan((v * v - Math.sqrt(disc)) / (G * D)) : 0.3;
+    this.mate.baseYaw = Math.atan2(dx, dz);
+    this.launch(dx, dz, v, th); this.hooks.popup('PAS ULAŞTI!', 'good'); this.sfx.strike(0.9); this.shake = 0.2; vib(40);
+    this.fx.emit(b.clone(), 0xffffff, 16, 5, 0.7, 0.4);
+    this.planKeeper(v);
+  }
+
+  // ---------- top ----------
+  private updateBall(dt: number) {
+    const b = this.ball.position; this.sinceKick += dt;
+    for (let n = Math.max(1, Math.ceil(dt / 0.004)), h = dt / n, i = 0; i < n; i++) this.stepBall(h);
+    if (this.live && this.bv.lengthSq() > 60 && Math.random() < 0.7) this.fx.emit(b.clone(), 0xffe9a8, 1, 0.3, 0.4, 0.28, 0);
+    if (this.live && this.kState !== 'hold' && this.sinceKick > 0.6 && b.y <= BALL_R + 0.01 && Math.hypot(this.bv.x, this.bv.z) < 1.2) this.end(this.type === 'pass' && !this.byMate ? 'PAS ULAŞMADI' : 'KAÇTI');
+    if (this.live && this.sinceKick > 6) this.end('KAÇTI');
+  }
+  private spin(dx: number, dz: number) { const d = Math.hypot(dx, dz); if (d > 1e-5) this.ball.rotateOnWorldAxis(new THREE.Vector3(dz / d, 0, -dx / d), d / BALL_R); }
+
+  private stepBall(h: number) {
+    const b = this.ball.position, v = this.bv, pz0 = b.z, px0 = b.x;
+    if (this.kState === 'hold') { const k = this.keeper.root.position; b.set(k.x + (this.plan?.dive ? this.plan.dir * 0.75 : 0), this.plan?.dive ? 0.35 : 1.15, k.z + 0.35); return; }
+    if (this.curveT > 0) { v.addScaledVector(this.curve, h); this.curveT -= h; }
+    else { const s = v.length(); v.multiplyScalar(Math.max(0, 1 - 0.006 * s * h)); }
+    v.y -= G * h; b.addScaledVector(v, h); this.spin(b.x - px0, b.z - pz0);
+    if (b.y < BALL_R) {
+      b.y = BALL_R;
+      if (v.y < -1.2) { this.sfx.bounce(-v.y); v.y *= -0.58; v.x *= 0.86; v.z *= 0.86; this.curveT = 0; } else { v.y = 0; const f = Math.max(0, 1 - 0.9 * h); v.x *= f; v.z *= f; }
     }
-    if (this.shot) {
-      // şut: top hedefe doğru yay çizer, golse filede kalır
-      const s = this.shot, u = Math.min(1, s.t / s.dur), sb = s.fromS + (s.toS - s.fromS) * u;
-      if (u < 1) { b.position.set(s.from.x + (s.tx - s.from.x) * u, s.from.y + (s.ty - s.from.y) * u + s.arc * Math.sin(Math.PI * u), -(sb - this.dist)); b.rotation.x -= 30 * dt; if (Math.random() < 0.7) this.fx.emit(b.position.clone(), 0xffe9a8, 1, 0.3, 0.4, 0.28, 0); }
-      else { b.position.z = -(s.toS - this.dist); b.position.y += (BALL_R - b.position.y) * Math.min(1, dt * 6); }
+    if (this.inGoal) {
+      // file: arka ağ esner ve topu yutar
+      const back = GZ - NET_D + this.world.netOffset(b.x, b.y) + BALL_R;
+      if (b.z < back) { const hit = Math.abs(v.z); if (hit > 1.5) { this.world.netHit(b.x, b.y, hit * 0.55); this.sfx.netSwish(); } b.z = back; v.z *= -0.06; v.x *= 0.35; v.y *= 0.35; }
+      if (Math.abs(b.x) > GOAL_W - BALL_R) { b.x = Math.sign(b.x) * (GOAL_W - BALL_R); v.x *= -0.1; }
+      if (b.y > GOAL_H - BALL_R) { b.y = GOAL_H - BALL_R; v.y *= -0.1; }
+      if (b.z > GZ - BALL_R && v.z > 0) v.z *= 0.5;
       return;
     }
-    // top, adımlarla eşzamanlı olarak bir sağ bir sol ayakla öne itilir
-    const q = (this.phase - Math.PI * 1.5) / (Math.PI * 3), cyc = q - Math.floor(q);
-    const side = Math.floor(q) % 2 === 0 ? 1 : -1;
-    if (cyc < this.lastCycle && !this.move) { this.sfx.touch(); this.fx.emit(new THREE.Vector3(this.px + side * 0.2, 0.05, -0.6), 0x7dff9a, 3, 1.2, 0.6, 0.3); }
-    this.lastCycle = cyc;
-    const c = Math.pow(cyc, 0.75);
-    let x = this.px + side * 0.55 * (2 * ease(cyc * 1.6) - 1), y = BALL_R, z = -(0.7 + 0.85 * 4 * c * (1 - c)), rate = 30;
-    const m = this.move;
-    if (m) {
-      const u = m.t / m.dur;
-      if (m.type === 'cut') { x = m.from + (m.to - m.from) * ease(u * 1.9) + m.dir * 0.3 * Math.sin(Math.PI * Math.min(1, u)); z = -1.6; }
-      else if (m.type === 'spin') { const a = -m.dir * Math.PI * 2 * ease(u); x = this.px + Math.sin(a) * 0.75 * m.dir; z = -1.0 - 0.5 * Math.cos(a); }
-      else if (m.type === 'hop') { y = BALL_R + 1.25 * 4 * u * (1 - u); z = -1.5; }
-      else if (m.type === 'drag') { z = u < 0.5 ? -1.4 + 1.0 * ease(u / 0.5) : -0.4 - 1.3 * ease((u - 0.5) / 0.5); rate = 40; }
+    // direkler: gerçek çarpışma
+    for (const s of [1, -1]) if (b.y < GOAL_H + POST_R) this.bounceOff(b.x - GOAL_W * s, b.z - GZ, 'x');
+    if (Math.abs(b.x) < GOAL_W + POST_R) this.bounceOff(b.y - GOAL_H, b.z - GZ, 'y');
+    // savunmacılar ve baraj
+    if (this.live) for (const o of this.defs) {
+      const top = 1.85 + (o.wall && this.sinceKick < 0.7 && !this.byMate ? Math.sin(Math.PI * this.sinceKick / 0.7) * 0.5 : 0);
+      const dx = b.x - o.x, dz = b.z - o.z, d = Math.hypot(dx, dz);
+      if (d < 0.42 + BALL_R && b.y < top && d > 1e-3) {
+        const nx = dx / d, nz = dz / d, vn = v.x * nx + v.z * nz; if (vn < 0) { v.x -= 1.4 * vn * nx; v.z -= 1.4 * vn * nz; v.multiplyScalar(0.5); v.y = Math.abs(v.y) * 0.4 + 2; }
+        this.curveT = 0; this.sfx.glove(); this.fx.emit(b.clone(), 0xffffff, 10, 3, 0.8, 0.4); this.end(o.wall ? 'BARAJ!' : this.type === 'pass' && !this.byMate ? 'PAS KESİLDİ' : 'BLOK!');
+      }
     }
-    const k = 1 - Math.exp(-rate * dt);
-    b.position.x += (x - b.position.x) * k; b.position.y += (y - b.position.y) * k; b.position.z += (z - b.position.z) * k;
-    b.rotation.x -= v * dt / BALL_R * 0.6;
+    this.keeperTouch();
+    if (pz0 >= GZ - BALL_R && b.z < GZ - BALL_R) { if (Math.abs(b.x) < GOAL_W && b.y < GOAL_H) this.goal(); else this.end('AUT'); }
+    if (Math.abs(b.x) > HALF_W + 3.5 || b.z < GZ - 5.5 || b.z > GZ + 60) { this.end('AUT'); v.x *= -0.3; v.z *= -0.3; }
   }
 
-  private updateDefs(dt: number, v: number) {
-    const alive = this.mode === 'run';
-    for (let i = this.defs.length - 1; i >= 0; i--) {
-      const d = this.defs[i]; d.t += dt;
-      let gap = d.s - this.dist;
-      if (d.state === 'approach') {
-        const own = this.own(d); d.s -= own * dt; gap -= own * dt; d.phase += own * dt * 2.1;
-        const ttc = gap / (v + own + 0.001);
-        if (d.type !== 'static' && gap < 40 && alive) {
-          if (d.type === 'lean' && ttc > this.window + 0.25) { const open = this.lane - d.cover; if (open < 0 || open > 2) d.cover = -d.cover; }
-          const tx = d.force ? this.px : LANE_X[this.lane] + (d.type === 'lean' ? d.cover * 0.5 : 0);
-          const rate = d.force ? 18 : d.type === 'lunge' ? 9 : d.type === 'slide' ? (d.sliding ? 11 : 5.5) : 6.5;
-          d.x = approach(d.x, tx, rate * dt);
-        }
-        if (d.type === 'slide' && !d.sliding && ttc < 0.8) { d.sliding = true; this.sfx.drag(); }
-        if (d.sliding && Math.random() < 0.5) this.fx.emit(new THREE.Vector3(d.x, 0.1, -gap), 0x9dffb0, 1, 1.5, 0.8, 0.3);
-        // işaret halkası ve ipucu
-        const inWin = ttc <= this.window && gap > 0.85, perf = inWin && ttc <= PERFECT, mm = d.marker.material as THREE.MeshBasicMaterial;
-        mm.color.setHex(perf ? 0xffe14d : MARK_COL[d.type]); mm.opacity = inWin ? 1 : gap < 40 ? 0.45 : 0;
-        d.marker.scale.setScalar(perf ? 1.35 : inWin ? 1.15 : 1);
-        d.marker.position.set(d.x, 0.03, -gap);
-        const showHint = this.hints && alive && d.type !== 'static' && gap < 42 && gap > 0;
-        d.hint.visible = showHint;
-        if (showHint) {
-          let kind: 'l' | 'r' | 'lr' | 'u' | 'd' = d.type === 'slide' ? 'u' : d.type === 'lunge' ? 'd' : 'lr';
-          if (d.type === 'lean') kind = d.cover > 0 ? 'l' : 'r';
-          else if (d.type === 'track') {
-            const blocked = (ln: number) => ln < 0 || ln > 2 || this.defs.some(o => o.type === 'static' && o.state === 'approach' && Math.abs(o.x - LANE_X[ln]) < 0.5 && o.s > d.s - 1 && o.s < d.s + 8);
-            const bl = blocked(this.lane - 1), br = blocked(this.lane + 1);
-            kind = bl && !br ? 'r' : br && !bl ? 'l' : 'lr';
-          }
-          d.hint.material = hintMaterial(kind);
-          d.hint.position.set(d.x, 2.55 * d.fb.root.scale.y, -gap);
-          d.hint.scale.setScalar(inWin ? 1.35 + 0.15 * Math.sin(this.time * 30) : 1.0);
-        }
-        if (alive && gap <= 0.85) {
-          if (gap > -0.7 && Math.abs(d.x - this.px) < 0.95) this.tackled(d);
-          else if (gap <= -0.7) { d.state = 'gone'; d.hint.visible = false; }
-        }
-      } else if (d.state === 'beaten') {
-        d.marker.visible = false;
-        if (d.type === 'track' || d.type === 'lean') { if (d.t < 0.3) d.x -= d.beatDir * 4.2 * dt; }
-        else if (d.type === 'slide') d.s -= 6 * Math.exp(-d.t * 3) * dt;
-        else if (d.type === 'lunge') { d.s -= 7 * Math.exp(-d.t * 2.5) * dt; d.x -= d.beatDir * 2.5 * Math.exp(-d.t * 4) * dt; }
-      } else { d.marker.visible = false; d.hint.visible = false; }
-      gap = d.s - this.dist;
-      d.fb.root.position.set(d.x, 0, -gap);
-      d.fb.setPose(this.defPose(d, gap), dt, d.state === 'beaten' ? 14 : 20);
-      if (gap < -12) { this.release(d); this.defs.splice(i, 1); }
+  private bounceOff(a: number, c: number, ka: 'x' | 'y') {
+    const d = Math.hypot(a, c), min = BALL_R + POST_R; if (d >= min || d < 1e-4) return;
+    const na = a / d, nc = c / d, b = this.ball.position, v = this.bv;
+    b[ka] += na * (min - d); b.z += nc * (min - d);
+    const vn = v[ka] * na + v.z * nc; if (vn >= 0) return;
+    v[ka] -= 1.62 * vn * na; v.z -= 1.62 * vn * nc; this.curveT = 0;
+    if (-vn > 3) { this.sfx.post(); this.shake = 0.3; vib(40); this.fx.emit(b.clone(), 0xffffff, 12, 4, 0.8, 0.4); if (this.live && !this.hitPost) this.hooks.popup('DİREK!', 'warn'); this.hitPost = true; }
+  }
+
+  private keeperTouch() {
+    const p = this.plan, b = this.ball.position, v = this.bv;
+    if (!p || p.done || !this.live || b.z > this.kz + 0.25) return;
+    p.done = true; if (!p.reach) return;
+    this.curveT = 0; this.sfx.glove(); this.shake = 0.2; vib(25); this.fx.emit(b.clone(), 0xc6ff3a, 14, 4, 0.8, 0.5);
+    if (p.kind === 'catch') { this.kState = 'hold'; this.kT = 0; v.set(0, 0, 0); return this.end('KALECİ TUTTU'); }
+    if (p.kind === 'tip') { v.multiplyScalar(0.72); v.x += p.dir * rnd(2, 4.5); v.y += rnd(1.5, 4); this.hooks.popup('PARMAK UCU!', 'warn'); return; }
+    const s = v.length(); v.set(p.dir * s * rnd(0.2, 0.45), rnd(2, 5.5), s * rnd(0.12, 0.32));
+    this.end('KALECİ KURTARDI');
+  }
+
+  private goal() {
+    if (!this.live) { this.inGoal = true; return; }
+    this.inGoal = true; this.live = false; this.curveT = 0; this.us++;
+    const b = this.ball.position, corner = Math.abs(b.x) > 2.5 && b.y > 1.55;
+    if (this.byMate) { this.assists++; this.results.push('assist'); this.hooks.popup('GOOOL!', 'perfect'); this.hooks.popup('ASİST SENDEN', 'good'); }
+    else { this.goals++; this.results.push('goal'); this.hooks.popup('GOOOL!', 'perfect'); if (this.hitPost) this.hooks.popup('DİREKTEN İÇERİ!', 'good'); else if (corner) this.hooks.popup('DOKSAN!', 'good'); else if (this.type === 'freekick') this.hooks.popup('FRİKİKTEN!', 'good'); }
+    this.sfx.goal(); this.sfx.crowd(1); this.slow = 0.7; this.shake = 0.3; vib([40, 50, 40, 50, 120]);
+    for (let i = 0; i < 4; i++) this.fx.emit(new THREE.Vector3(rnd(-4, 4), rnd(3, 5), GZ + 2), [0xffd23f, 0xff4d6d, 0x39f0c8, 0xffffff][i], 30, 7, 0.8, 1.6, 5);
+    this.mode = 'result'; this.t = -0.6; this.hooks.board(this.us, this.them, this.minutes[this.idx], this.rival, this.results);
+  }
+
+  private end(text: string) {
+    if (!this.live) return; this.live = false;
+    this.results.push('miss'); this.hooks.popup(text, 'warn'); this.sfx.crowd(0.12);
+    this.mode = 'result'; this.t = 0; this.hooks.board(this.us, this.them, this.minutes[this.idx], this.rival, this.results);
+  }
+
+  // ---------- kaleci ----------
+  private updateKeeper(dt: number) {
+    const k = this.keeper, p = this.plan; this.kT += dt;
+    let target: Pose;
+    if (this.kState === 'set') {
+      const tx = clamp(this.ball.position.x * 0.14, -1.6, 1.6), step = 3 * dt; this.kx += clamp(tx - this.kx, -step, step);
+      const tense = this.mode === 'contact' || (this.mode === 'aim' && this.aiming);
+      target = jockeyPose(this.clock * 0.5); target.saL = target.saR = tense ? 1.25 : 1.0; target.pitch = tense ? 0.38 : 0.25;
+    } else if (this.kState === 'dive' && p) {
+      const react = Math.max(0.16, 0.27 - this.level * 0.012), u = clamp((this.kT - react) / Math.max(0.08, p.T - react), 0, 1);
+      this.kx = p.from + p.dir * p.dist * u * u * (3 - 2 * u);
+      if (this.kT < react) target = jockeyPose(this.clock);
+      else if (p.dive) {
+        const fly = Math.sin(Math.PI * clamp(this.kT / (p.T + 0.25), 0, 1));
+        target = sideFallPose((this.kT - react) * 1.4, p.dir);
+        target.y += clamp(p.y - 0.5, 0, 1.7) * fly; target.shL = target.shR = 2.9; target.saL = target.saR = 0.25; target.elL = target.elR = 0.1; target.thL = 0.1; target.thR = -0.15; target.knL = 0.3; target.knR = 0.2;
+      } else {
+        const jump = p.y > 1.9 ? Math.sin(Math.PI * clamp(this.kT / (p.T + 0.2), 0, 1)) * 0.5 : 0, low = p.y < 0.6;
+        target = pose({ y: jump, thL: 0.4, thR: 0.4, knL: low ? 1.3 : 0.6, knR: low ? 1.3 : 0.6, abL: 0.3, abR: 0.3, pitch: low ? 0.5 : 0.1, shL: 0.8 + p.y * 0.9, shR: 0.8 + p.y * 0.9, saL: 0.2, saR: 0.2, elL: 0.3, elR: 0.3 });
+      }
+      if (this.kT > p.T + 0.35) { this.kState = 'down'; this.kT = 0; }
+    } else if (this.kState === 'down') target = p?.dive ? sideFallPose(1, p.dir) : pose({ thL: 0.3, thR: 0.3, knL: 0.5, knR: 0.5 });
+    else target = p?.dive ? sideFallPose(1, p.dir) : pose({ shL: 1.3, shR: 1.3, saL: 0.1, saR: 0.1, elL: 1.5, elR: 1.5, pitch: 0.1 });
+    k.root.position.set(this.kx, 0, this.kz); k.baseYaw = 0; k.setPose(target, dt, this.kState === 'dive' ? 22 : 12);
+  }
+
+  // ---------- kamera ----------
+  private updateCamera(dt: number) {
+    const cam = this.camera, b = this.ball.position, f = this.fwd, s = this.spot;
+    // nişan alırken topun arkasında, okun ve kalenin görüneceği yükseklikte
+    const tp = new THREE.Vector3(s.x - f.x * 8.2, 5.2, s.z - f.y * 8.2), tl = new THREE.Vector3(s.x + f.x * 9, 0.6, s.z + f.y * 9);
+    let rate = 5;
+    if (this.type === 'pass' && (this.mode === 'aim' || this.mode === 'intro' || this.mode === 'contact')) { tp.set(s.x * 0.85 + this.mx * 0.15, 13, s.z + 11); tl.set(s.x * 0.65 + this.mx * 0.35, 0, s.z - 8); }
+    if (this.mode === 'contact') { tp.y -= 0.8; rate = 8; }
+    if (this.mode === 'fly' || this.mode === 'result') {
+      tl.set(b.x, Math.max(0.8, b.y * 0.8), b.z); tp.set(s.x * 0.5 + b.x * 0.4, 3.8, Math.max(b.z + 10, Math.min(s.z + 7, b.z + 16))); rate = 6;
     }
+    const k = 1 - Math.exp(-rate * dt); this.camPos.lerp(tp, k); this.camLook.lerp(tl, k);
+    this.shake = Math.max(0, this.shake - dt); const sh = this.shake * 0.6;
+    cam.position.set(this.camPos.x + (Math.random() - 0.5) * sh, this.camPos.y + (Math.random() - 0.5) * sh, this.camPos.z);
+    cam.lookAt(this.camLook);
   }
 
   private updateMenu(dt: number) {
-    const p = this.player, t = this.time;
+    const p = this.player, t = this.clock;
     p.baseYaw = t * 0.55;
     const w = Math.sin(t * 2);
     p.setPose(pose({ pitch: 0.03, twist: 0.06 * w, thR: 1.05, knR: 1.3, abR: 0.1, thL: -0.02, knL: 0.04, shL: 0.1 * w, shR: -0.1 * w, saL: 0.22, saR: 0.22, elL: 0.35, elR: 0.35, head: -0.05 }), dt, 8);
-    // top sağ ayağın altında, karakterle birlikte döner
     const a = p.baseYaw, lx = -0.105, lz = 0.36;
-    this.ball.position.set(lx * Math.cos(a) + lz * Math.sin(a), BALL_R, -lx * Math.sin(a) + lz * Math.cos(a));
+    this.ball.visible = true; this.ball.position.set(lx * Math.cos(a) + lz * Math.sin(a), BALL_R, -lx * Math.sin(a) + lz * Math.cos(a));
     this.ball.rotation.set(0, a, 0);
-    this.world.update(0); this.fx.update(dt, 0);
+    this.keeper.root.position.set(0, 0, GZ + 0.7); this.keeper.setPose(jockeyPose(t), dt, 10);
+    this.fx.update(dt, 0); this.world.update(dt); this.world.follow(0, 0);
     this.camera.position.set(0, 1.45, 8.6); this.camera.lookAt(0, 0.1, 0);
+    this.camPos.copy(this.camera.position); this.camLook.set(0, 0.1, 0);
   }
 }
