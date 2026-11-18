@@ -47,6 +47,8 @@ html, body {
   cursor: grab;
 }
 #scene.grabbing { cursor: grabbing; }
+/* Gece atmosferi: kenarlara doğru hafif kararma */
+#vignette { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(4, 6, 22, 0.5) 100%); }
 #scene.pointing { cursor: pointer; }
 #scene:focus-visible { box-shadow: inset 0 0 0 3px var(--yellow); }
 
@@ -565,6 +567,12 @@ kbd { font-family: var(--mono); font-size: 11.5px; font-weight: 700; padding: 2p
 .fatal-box { max-width: 420px; display: grid; gap: 10px; justify-items: start; }
 
 @media (max-width: 1560px) { .seatbar .lbl { display: none; } }
+@media (max-width: 1400px) and (min-width: 761px) {
+  /* Dar masaüstü: ses seviyesi etkinlik kartındaki kaydırıcıdan ayarlanır */
+  .sound-group input { display: none; }
+  .seatbar { gap: 8px; }
+  .seatbar-group { padding-left: 8px; }
+}
 
 /* ---------- Dar masaüstü ---------- */
 @media (max-width: 1180px) and (min-width: 761px) {

@@ -5,11 +5,11 @@ tıklarsın, kamera o koltuğa uçar ve sahadaki canlı etkinliği oradan izlers
 Harici model, doku, font ya da ağ bağımlılığı yoktur; her şey kodla üretilir ve
 uygulama çevrimdışı açılır.
 
-![Stadyum görünümü](docs/stadyum.png)
+![Stadyum görünümü](docs/stadyum.jpg)
 
 | Koltuk görünümü | Sahne modu | Telefon |
 | --- | --- | --- |
-| ![Koltuk](docs/koltuk.png) | ![Sahne](docs/sahne.png) | ![Telefon](docs/telefon.png) |
+| ![Koltuk](docs/koltuk.jpg) | ![Sahne](docs/sahne.jpg) | ![Telefon](docs/telefon.jpg) |
 
 ## Çalıştırma
 
@@ -155,7 +155,8 @@ seyirci hareketi.
 
 **Cila ve teslim** — Mesafeye dayalı LOD, otomatik kalite, WebGL yokluğu ve bağlam kaybı
 mesajları, sekme arka planında zaman sıçramasına karşı delta sınırı, tek dosyalık derleme,
-49 + 20 + 6 + 5 kontrol içeren uçtan uca test.
+94 kontrollük uçtan uca test (masaüstü 1440×900, dizüstü 1366×768, telefon 390×844 dokunmatik,
+WebSocket ile iki oturum, dayanıklılık); son koşuda 94/94 geçti, konsol temiz.
 
 ## Yapılmayanlar
 

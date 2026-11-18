@@ -126,12 +126,16 @@ async function boot(): Promise<void> {
 
   let previewDirty = false;
   let previewRevealAt = 0;
+  /** Gol anında kısa ışık parlaması (pozlama vuruşu). */
+  let flash = 0;
+  const baseExposure = kit.renderer.toneMappingExposure;
 
   // ---------- Etkinlik katmanı ----------
   await progress(80, 'Etkinlik hazırlanıyor…');
   const onCue = (c: CrowdCue): void => {
     switch (c.type) {
       case 'goal':
+        flash = 1;
         field.cheerAll(1, 6.5);
         audio.cue('goal');
         ui.toast(`GOL! ${c.team === 0 ? venue.events.match.home.name : venue.events.match.away.name}`);
@@ -634,6 +638,10 @@ async function boot(): Promise<void> {
 
     director.update(dt);
     cam.update(dt);
+    if (flash > 0) {
+      flash = Math.max(0, flash - dt * 1.6);
+      kit.renderer.toneMappingExposure = baseExposure * (1 + 0.45 * flash * flash);
+    }
     const shiftTarget = store.get('mode') === 'intro' ? 0 : Math.max(0, panelHeight - 70) / 2;
     viewShift += (shiftTarget - viewShift) * Math.min(1, dt * 9);
     if (Math.abs(shiftTarget - viewShift) < 0.5) viewShift = shiftTarget;

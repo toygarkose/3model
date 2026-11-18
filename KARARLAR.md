@@ -19,3 +19,12 @@ Belirsiz noktalarda verilen kararlar (tek satır).
 - En fazla 6 bilet tutulur; "Koltuğu bırak" ile iade edilir. Ödeme yok.
 - Görüş puanı = 100 × (0.5·yakınlık + 0.2·yükseklik açısı + 0.3·yan açı); fiyat kat aralığı içinde puanla orantılı.
 - Varsayılan içerik etkinliği: maç. Sahne modunda stadyum ışıkları kısılır, müzik Web Audio ile sentezlenir.
+- Karşı tribündeki koltuğa uçarken kamera önce koltuğa bakarak yaklaşır, son yarıda sahaya döner; dönüşte koltuğa bakarak geri çekilir (yalpa/roll yok, yön sapma+yunuslama ile enterpole edilir).
+- Telefonda panel açıkken sahne, kamera `setViewOffset` ile panelin üstünde kalan alana ortalanır.
+- Kısa masaüstü ekranlarda (≤800 px yükseklik) koltuk seçiliyken blok haritası gizlenir, filtreler kalır; koltuk kartı kaydırmasız sığar.
+- Ses seviyesi kaydırıcısı hem etkinlik kartında (her zaman) hem koltuk araç çubuğunda (geniş masaüstü) bulunur.
+- Bilet varsa boş koltuk kartında doğrudan "Koltuğuma git" düğmesi çıkar (ayrıca Koltuklarım listesinde).
+- Aynı tarayıcıdaki sekmeler aynı kullanıcı sayılır (bilet ortak); "başkasının koltuğu dolu" davranışı yalnızca farklı oturum/cihazda (WebSocket) oluşur.
+- Playwright bağımlılık olarak eklenmedi (tarayıcı indirmesi ağır); test betiği önce projedeki, yoksa ortamdaki küresel kurulumu kullanır.
+- Gol anında kısa pozlama parlaması ve tüm tribün coşkusu; gece atmosferi için CSS vinyet katmanı.
+- `window.__seyir` test/hata ayıklama kancasıdır (durum, kamera, koltuk bulma, ileri sarma); üretimde de zararsız olduğu için bırakıldı.

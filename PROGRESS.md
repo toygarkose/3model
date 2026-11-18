@@ -3,22 +3,21 @@
 Oturum kesilirse: bu dosyayı oku, "ŞU AN" bölümünden devam et.
 
 ## Kilometre taşları
-- [ ] KT1 — Sahne (stadyum, saha, ışık, orbit kamera, giriş hareketi)
-- [ ] KT2 — Arayüz (kartlar, mini haritalar, filtre, mobil panel)
-- [ ] KT3 — Koltuk seçimi ve geçiş (hover, uçuş, koltuk görünümü, URL)
-- [ ] KT4 — Etkinlik katmanı (maç, sahne modu, akış, ses)
-- [ ] KT5 — Seyirci ve bilet (bilet, tepkiler, eş zamanlılık)
-- [ ] KT6 — Cila ve teslim (performans, inceleme, tek dosya, README)
+- [x] KT1 — Sahne (stadyum, saha, ışık, orbit kamera, giriş hareketi)
+- [x] KT2 — Arayüz (kartlar, mini haritalar, filtre, mobil panel)
+- [x] KT3 — Koltuk seçimi ve geçiş (hover, uçuş, koltuk görünümü, URL)
+- [x] KT4 — Etkinlik katmanı (maç, sahne modu, akış, ses)
+- [x] KT5 — Seyirci ve bilet (bilet, tepkiler, eş zamanlılık)
+- [x] KT6 — Cila ve teslim (LOD/kalite, inceleme, tek dosya, README) — gerçek GPU'da fps ölçümü hariç
 
 ## ŞU AN
-Bütün kilometre taşlarının kodu yazıldı; `npm test` senaryoları (masaüstü, telefon, sunucu,
-dayanıklılık) ayrı ayrı koşulup geçti. README yazıldı, tek dosyalık derleme çalışıyor.
-Sıradaki adımlar (cila turu):
-1. Sağ sütun kart yerleşimi (koltuk seçiliyken harita kartıyla çakışma) düzeltildi → ekran
-   görüntüsüyle tekrar doğrula.
-2. Maç ve sahne modunu yakın planda incele; ışık / geçiş hissi / mobil cilası.
-3. Kod incelemesi (ölü kod, dispose), README'deki ekran görüntülerini docs/ altına koy.
-4. Son tam `npm test`, PROGRESS kutularını işaretle, commit + push.
+Bütün kilometre taşları tamamlandı, commit'lendi ve `claude/focused-dijkstra-k7h20u` dalına
+push edildi. Son tam `npm test` koşusunun sonucu README'nin "Tamamlananlar" bölümünde.
+
+Devam edilecekse (öncelik sırasıyla):
+1. Gerçek GPU'lu bir dizüstü ve telefonda kare hızını ölç (README "Bilinen sorunlar").
+2. Zaman kalırsa yeni özellik değil cila: geçiş hissi, ışık, mobil deneyim.
+3. README'deki ekran görüntüleri `docs/` altında; arayüz değişirse scratch betikle yeniden üret.
 
 ## Notlar
 - Playwright küresel kurulu: /opt/node-tools/node_modules/playwright (1.63.0),
