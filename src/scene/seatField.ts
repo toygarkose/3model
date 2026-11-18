@@ -548,9 +548,11 @@ export class SeatField {
     const cheerTarget = time < this.cheerUntil ? this.cheerLevel : 0;
     this.shared.uCheer.value += (cheerTarget - this.shared.uCheer.value) * Math.min(1, dt * 4);
     const lod2 = this.lodDistance * this.lodDistance;
+    // Kameranın oturduğu blok her zaman ayrıntılı: kendi koltuğundaki seyirci orada gizlenir
+    const own = this.hidden >= 0 ? this.blocks[this.data.block[this.hidden]] : null;
     for (const b of this.blocks) {
       // LOD: kameraya yakın bloklar ayrıntılı (instanced), uzaklar birleştirilmiş geometri
-      const near = b.center.distanceToSquared(camera.position) < lod2;
+      const near = b === own || b.center.distanceToSquared(camera.position) < lod2;
       if (near !== b.near) {
         b.near = near;
         b.seats.visible = b.bodies.visible = b.heads.visible = near;

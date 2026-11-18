@@ -78,6 +78,7 @@
           <button class="btn btn-small" type="submit">Uygula</button>
         </div>
       </form>
+      <label class="vol" for="volume-main"><span>Ortam sesi</span><input id="volume-main" type="range" min="0" max="100" value="70" aria-label="Ortam sesi seviyesi" /></label>
       <p class="online" id="ev-online"><i></i><span id="ev-online-text">Yalnızca sen çevrim içisin</span></p>
     </section>
 
@@ -115,6 +116,7 @@
         <h2>Koltuğunu seç</h2>
         <p class="muted">Tribünden bir koltuğa tıkla; kamera oraya uçsun ve etkinliği o koltuktan gör.</p>
         <button class="btn btn-yellow btn-wide" id="btn-suggest" type="button"><span data-icon="star"></span>En iyi boş koltuğu öner</button>
+        <button class="btn btn-blue btn-wide" id="btn-myseat" type="button" hidden><span data-icon="ticket"></span>Koltuğuma git</button>
       </div>
       <div id="seat-body" hidden>
         <div class="row between">

@@ -321,7 +321,9 @@ export class CameraController {
         // Bakış, yolun ikinci yarısında hedefe kilitlenir: iniş hissi.
         const r = this.state === 'hop' ? e : easeInOutCubic(clamp(this.flightT * 1.15, 0, 1));
         this.camera.quaternion.copy(this.flightFrom.quat).slerp(this.flightTo.quat, r);
-        this.setFov(lerp(this.flightFrom.fov, this.flightTo.fov, e));
+        // Uçuşun ortasında görüş açısı hafifçe genişler: hız hissi
+        const kick = this.state === 'hop' ? 0 : Math.sin(Math.PI * e) * 7;
+        this.setFov(lerp(this.flightFrom.fov, this.flightTo.fov, e) + kick);
         if (this.flightT >= 1) {
           this.state = this.flightEndState;
           const done = this.flightDone;

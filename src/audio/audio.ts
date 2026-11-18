@@ -21,8 +21,8 @@ export class AudioEngine {
   private musicBpm = 124;
   private pendingMusic: number | null = null;
 
-  get unlocked(): boolean {
-    return this.ctx !== null;
+  get info(): { unlocked: boolean; state: string; music: boolean } {
+    return { unlocked: this.ctx !== null, state: this.ctx?.state ?? 'none', music: this.musicTimer !== null };
   }
 
   /** İlk kullanıcı etkileşiminde çağrılır. */

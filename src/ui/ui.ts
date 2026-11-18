@@ -105,7 +105,7 @@ export class UI {
       }
     }, true);
     store.on('volume', (v) => {
-      $<HTMLInputElement>('volume').value = String(Math.round(v * 100));
+      for (const id of ['volume', 'volume-main']) $<HTMLInputElement>(id).value = String(Math.round(v * 100));
     }, true);
     store.on('eventId', () => this.renderEvent(), true);
     store.on('online', () => this.renderOnline(), true);
@@ -260,6 +260,10 @@ export class UI {
 
   private bindSeatCard(): void {
     $('btn-suggest').addEventListener('click', () => this.actions.suggestSeat());
+    $('btn-myseat').addEventListener('click', () => {
+      const mine = this.mySeats();
+      if (mine.length) this.actions.goToSeat(mine[mine.length - 1]);
+    });
     $('btn-buy').addEventListener('click', () => {
       const seat = this.store.get('selectedSeat');
       if (seat >= 0 && this.actions.seatState(seat) === 'mine') this.showTicket(seatId(this.data, seat));
@@ -277,6 +281,7 @@ export class UI {
     const seat = this.store.get('selectedSeat');
     $('seat-empty').hidden = seat >= 0;
     $('seat-body').hidden = seat < 0;
+    $('btn-myseat').hidden = this.store.get('tickets').length === 0;
     if (seat < 0) return;
     const d = this.data;
     const block = d.blocks[d.block[seat]];
@@ -329,7 +334,9 @@ export class UI {
     $('re-cheer').addEventListener('click', () => this.actions.react('cheer'));
     $('re-wave').addEventListener('click', () => this.actions.react('wave'));
     $('btn-sound2').addEventListener('click', () => this.actions.setSound(!this.store.get('soundOn')));
-    $<HTMLInputElement>('volume').addEventListener('input', (e) => this.actions.setVolume(Number((e.target as HTMLInputElement).value) / 100));
+    for (const id of ['volume', 'volume-main']) {
+      $<HTMLInputElement>(id).addEventListener('input', (e) => this.actions.setVolume(Number((e.target as HTMLInputElement).value) / 100));
+    }
   }
 
   // ---------- Telefon paneli ----------

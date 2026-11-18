@@ -166,6 +166,8 @@ mesajları, sekme arka planında zaman sıçramasına karşı delta sınırı, t
   tuşları/butonlar ve listeler kullanılır).
 - Maç simülasyonu basitleştirilmiştir: ofsayt, faul, korner, kart ve oyuncu değişikliği yok;
   top saha dışına çıkınca taç/kale vuruşu en yakın oyuncuya verilir.
+- Klavyeyle tek tek koltuk seçimi yok: klavye kullanıcıları blok haritası, "En iyi boş koltuğu
+  öner", favoriler/koltuklarım listeleri ve koltuk görünümündeki ok tuşlarıyla gezinir.
 - Gölge haritaları, yansıma, post-process (bloom) yok; ışık hüzmeleri toplamalı konilerdir.
 - Gerçek seyirci avatarı/sohbet yok; başka seyirciler tribünde işaretçi olarak görünür.
 - Dil yalnızca Türkçe.

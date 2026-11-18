@@ -423,6 +423,17 @@ async function boot(): Promise<void> {
     }
   }
 
+  // Bilet → koltuk durumu: arayüz dinleyicilerinden önce güncellenmeli
+  store.on(
+    'tickets',
+    (tickets) => {
+      mineSet = new Set(tickets.map((t) => findSeatById(seats, t.seat)).filter((s) => s >= 0));
+      field.setMine([...mineSet]);
+      persist();
+    },
+    true,
+  );
+
   const ui = new UI(store, venue, seats, director.sources, actions);
 
   // ---------- Eş zamanlılık ----------
@@ -479,15 +490,6 @@ async function boot(): Promise<void> {
     canvas.classList.toggle('pointing', seat >= 0);
   });
   store.on('filter', (f) => field.setFilter((i) => matchesFilter(i, f)));
-  store.on(
-    'tickets',
-    (tickets) => {
-      mineSet = new Set(tickets.map((t) => findSeatById(seats, t.seat)).filter((s) => s >= 0));
-      field.setMine([...mineSet]);
-      persist();
-    },
-    true,
-  );
   store.on('favorites', persist);
   store.on('soundOn', persist);
   store.on('volume', persist);
@@ -720,6 +722,11 @@ async function boot(): Promise<void> {
     scene: kit.scene,
     camera: () => ({ pos: kit.camera.position.toArray(), dir: kit.camera.getWorldDirection(new THREE.Vector3()).toArray(), fov: kit.camera.fov, zoom: cam.zoomLevel }),
     probe: () => new Promise<number>((resolve) => (probeResolve = resolve)),
+    audio: () => audio.info,
+    /** Kamera ve görünüm kayması durgun mu? (testler tıklamadan önce bekler) */
+    stable: () => !cam.locked && viewShift === Math.max(0, panelHeight - 70) / 2,
+    /** Canlı evreyi ileri sarar (testler bitiş durumunu beklemeden görsün). */
+    fastForward: (seconds: number) => director.fastForward(seconds),
     state: () => ({ ...store.snapshot, seatId: store.get('selectedSeat') >= 0 ? seatId(seats, store.get('selectedSeat')) : null, locked: cam.locked }),
     stats,
     status: () => director.status,
@@ -766,6 +773,10 @@ async function boot(): Promise<void> {
     detach();
     sync.dispose();
     audio.dispose();
+  });
+  // Geri/ileri önbelleğinden dönülürse bağlantılar kapalıdır: temiz başlat
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) location.reload();
   });
 }
 

@@ -91,6 +91,11 @@ export class EventDirector {
     this.store.set({ countdown: Math.ceil(this.countdown) });
   }
 
+  /** Canlı evreyi ileri sarar (hata ayıklama ve test). */
+  fastForward(seconds: number): void {
+    if (this.store.get('phase') === 'live') this.liveTime = Math.min(this.venue.flow.liveSeconds - 0.05, this.liveTime + seconds);
+  }
+
   private setPhase(phase: Phase): void {
     if (this.store.get('phase') === phase && phase !== 'countdown') return;
     this.store.set({ phase });

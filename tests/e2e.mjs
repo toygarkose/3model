@@ -90,6 +90,7 @@ async function overflow(page, selectors) {
 }
 
 async function findSeat(page, taken) {
+  await page.waitForFunction(() => window.__seyir.stable(), null, { timeout: LONG });
   const hit = await page.evaluate((t) => window.__seyir.findClickable(t), taken);
   if (!hit) throw new Error(`Tıklanabilir ${taken ? 'dolu' : 'boş'} koltuk bulunamadı`);
   return hit;
@@ -319,6 +320,17 @@ async function desktop(browser, problems) {
   await page.waitForFunction(() => parseInt(window.__seyir.status().clock, 10) >= 3, null, { timeout: LONG });
   check('maç: süre işliyor', true, JSON.stringify(await page.evaluate(() => window.__seyir.status())));
   await shot(page, 'd15-mac-canli');
+  const audio = await page.evaluate(() => window.__seyir.audio());
+  check('ses bağlamı kullanıcı etkileşiminden sonra çalışıyor', audio.unlocked && audio.state === 'running', JSON.stringify(audio));
+  // Akışın sonu: bitti
+  await page.evaluate(() => window.__seyir.fastForward(1000));
+  await page.waitForFunction(() => window.__seyir.state().phase === 'finished', null, { timeout: LONG });
+  await page.waitForTimeout(800);
+  check('akış: CANLI → BİTTİ', (await text(page, '#ev-phase')) === 'BİTTİ' && /sona erdi/.test(await text(page, '#ev-detail')), await text(page, '#ev-headline'));
+  await shot(page, 'd15b-bitti');
+  await page.click('#btn-demo');
+  await page.waitForFunction(() => window.__seyir.state().phase === 'live', null, { timeout: LONG });
+  check('bitince Demo ile yeniden başlıyor', (await page.evaluate(() => window.__seyir.status().headline)).includes('0 – 0'));
 
   // Klavye ile gezinme: görünür odak
   await page.keyboard.press('Tab');
@@ -334,9 +346,11 @@ async function desktop(browser, problems) {
   check('kare döngüsü çalışıyor', stats.frameMs > 0 && stats.calls > 0);
 
   // Yeniden açılış: bilet kalıcı
-  await page.reload();
+  await page.goto('about:blank');
+  await page.goto(BASE);
   await waitReady(page);
   check('bilet localStorage ile kalıcı', (await text(page, '#ticket-count')) === '1');
+  check('açılışta "Koltuğuma git" sunuluyor', await page.locator('#btn-myseat').isVisible());
 
   // İkinci sekme: BroadcastChannel ile birbirini görür
   const page2 = await ctx.newPage();
