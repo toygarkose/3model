@@ -56,5 +56,8 @@ export class Sfx {
     for (const f of [2150, 2230]) this.tone(f, dur, 'square', 0.05);
     this.noise(dur, 0.06, 2200, 2200, 6);
   }
+  kick(power: number) { this.tone(120, 0.12, 'sine', 0.5, 0, 50); this.noise(0.1, 0.3 + power * 0.3, 1200, 300, 0.8); }
+  post() { this.tone(880, 0.5, 'triangle', 0.3); this.tone(1320, 0.35, 'sine', 0.2); }
+  goal() { this.noise(2.6, 0.75, 500, 1500, 0.35); this.noise(2.2, 0.4, 900, 2200, 0.5, 0.1); [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.4, 'triangle', 0.22, 0.1 + i * 0.09)); }
   click() { this.tone(660, 0.05, 'triangle', 0.15); }
 }

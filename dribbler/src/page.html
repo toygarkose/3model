@@ -22,15 +22,20 @@ button:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 .layer > * { pointer-events: auto; }
 
 /* HUD */
-#hud { padding-block: 14px; flex-direction: row; justify-content: space-between; align-items: flex-start; }
-#hud > * { pointer-events: none; }
+#hud { padding-block: 14px; gap: 10px; }
+#hud > *, #hud * { pointer-events: none; }
+.hudrow { display: flex; justify-content: space-between; align-items: flex-start; }
 #score { font: italic 800 44px/1 var(--display); font-variant-numeric: tabular-nums; text-shadow: 0 3px 0 rgba(13,18,51,.55); }
 .scorelabel { font: 600 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
-#mult { font: italic 800 34px/1 var(--display); padding: 6px 14px 7px; background: var(--night); border: 2px solid var(--line); transform: skewX(-8deg); }
-#mult[data-m="2"], #mult[data-m="3"] { color: var(--volt); border-color: var(--volt); }
-#mult[data-m="4"], #mult[data-m="5"] { color: var(--night); background: var(--volt); border-color: var(--volt); }
-#mult.bump { animation: bump .3s ease-out; }
-@keyframes bump { 0% { transform: skewX(-8deg) scale(1.5); } 100% { transform: skewX(-8deg) scale(1); } }
+#lives { display: flex; gap: 6px; padding-top: 6px; }
+#lives i { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 50% 50%, var(--night) 0 24%, var(--chalk) 27% 100%); border: 2px solid var(--night); }
+#lives i.off { background: transparent; border-color: var(--line); }
+.timetrack { height: 6px; background: rgba(13,18,51,.6); }
+#timebar { height: 100%; background: var(--volt); transform-origin: left; }
+#timebar.low { background: var(--flare); }
+#stick { position: absolute; width: 0; height: 0; pointer-events: none; }
+#stick::before { content: ""; position: absolute; left: -54px; top: -54px; width: 108px; height: 108px; border-radius: 50%; border: 2px solid rgba(244,255,240,.45); background: rgba(13,18,51,.25); }
+#knob { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%; background: rgba(244,255,240,.75); }
 
 #pops { position: absolute; left: 0; right: 0; top: 24%; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
 .pop { font: italic 800 30px/1 var(--display); letter-spacing: .02em; text-shadow: 0 3px 0 rgba(13,18,51,.7); animation: pop .85s ease-out forwards; }
@@ -42,7 +47,7 @@ button:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 #menu { justify-content: space-between; padding-left: 0; padding-right: 0; }
 #menu header { padding: 22px var(--gr) 0 var(--gl); pointer-events: none; }
 h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); letter-spacing: -.01em; text-shadow: 4px 4px 0 var(--flare); }
-#best { margin: 12px 0 0; font: 600 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--volt); }
+#best { margin: 12px 0 0; font: 600 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--volt); text-shadow: 0 2px 0 var(--night), 0 0 12px var(--night); }
 .sheet { background: linear-gradient(180deg, rgba(13,18,51,.82), var(--night) 30%); border-top: 2px solid var(--line); padding: 10px 0 max(14px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
 #tabs { display: flex; gap: 4px; padding: 0 var(--gr) 0 var(--gl); }
 #tabs button { flex: 1; min-width: 0; padding: 9px 2px; font: 800 16px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); border-bottom: 3px solid transparent; }
@@ -82,9 +87,13 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
 <div id="app">
   <canvas id="c" aria-label="Dribbler oyun sahnesi"></canvas>
   <div id="hud" class="layer" hidden>
-    <div><div class="scorelabel">Skor</div><div id="score">0</div></div>
-    <div id="mult" data-m="1">x1</div>
+    <div class="hudrow">
+      <div><div class="scorelabel">Skor</div><div id="score">0</div></div>
+      <div id="lives" aria-label="Kalan hak"><i></i><i></i><i></i></div>
+    </div>
+    <div class="timetrack"><div id="timebar"></div></div>
   </div>
+  <div id="stick" hidden><div id="knob"></div></div>
   <div id="pops" aria-live="polite"></div>
 
   <section id="menu" class="layer">
@@ -96,30 +105,29 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
       <div id="opts"></div>
       <div class="actions">
         <button id="play" class="cta">OYNA</button>
-        <div class="minor"><button id="tSound">Ses: Açık</button><button id="tHints">İpucu okları: Açık</button><button id="bHow">Nasıl oynanır?</button></div>
+        <div class="minor"><button id="tSound">Ses: Açık</button><button id="bHow">Nasıl oynanır?</button></div>
       </div>
     </div>
   </section>
 
   <section id="how" class="layer card" hidden>
-    <h2>Savunmacıyı oku, doğru çalımı at</h2>
-    <p>Futbolcun kendi koşar. Sen sadece kaydırırsın. Savunmacı yaklaşıp ayağının altındaki halka parladığında hamleni yap.</p>
+    <h2>Savunmayı geç, kaleye vur</h2>
+    <p>Her hücumda top sende başlar. Süre dolmadan gol at. Üç hakkın var: top kaptırırsan, kaçırırsan ya da süre biterse bir hak gider.</p>
     <ul class="moves">
-      <li><div class="key">↔</div><div><b>Bekleyen savunmacı</b><span>Yaklaşınca sağa ya da sola kaydır. Erken kaydırırsan peşinden gelir.</span></div></li>
-      <li><div class="key">←</div><div><b>Kolunu açan</b><span>Bir tarafı kapatır. Açık kalan tarafa kaydır.</span></div></li>
-      <li><div class="key">↑</div><div><b>Kayarak gelen · sarı halka</b><span>Yukarı kaydır, topu sektirip üstünden atla.</span></div></li>
-      <li><div class="key">↓</div><div><b>Üstüne koşan iri savunmacı · kırmızı halka</b><span>Aşağı kaydır, topu geri çek, boşa düşsün.</span></div></li>
+      <li><div class="key">✥</div><div><b>Hareket</b><span>Parmağını ekrana bas ve sürükle. Futbolcu o yöne top sürer.</span></div></li>
+      <li><div class="key">↑</div><div><b>Şut</b><span>Kaleye doğru kısa ve hızlı bir fiske at. Yönü fiskenin yönü, yüksekliği fiskenin uzunluğu belirler.</span></div></li>
+      <li><div class="key">!</div><div><b>Çalım</b><span>Savunmacının halkası kırmızı yanınca hamle yapacak demektir. O an yön değiştir, boşa düşsün.</span></div></li>
     </ul>
-    <p>Halka altın rengine döndüğü an yaparsan <b>MÜKEMMEL</b> olur ve çarpanın artar. Ne kadar geç, o kadar iyi.</p>
+    <p>Köşeye ya da uzaktan atılan goller ekstra puan verir. Her golden sonra savunma kalabalıklaşır, kaleci hızlanır.</p>
     <button id="howOk" class="cta">ANLADIM</button>
   </section>
 
   <section id="over" class="layer card" hidden>
-    <h2>Top kaptırıldı</h2>
+    <h2>Maç bitti</h2>
     <div><div id="oScore">0</div><div id="oBest">En iyi: 0</div></div>
     <dl class="stats">
-      <div><dt>Mesafe</dt><dd id="oDist">0 m</dd></div><div><dt>Çalım</dt><dd id="oDrib">0</dd></div>
-      <div><dt>Mükemmel</dt><dd id="oPerf">0</dd></div><div><dt>En yüksek çarpan</dt><dd id="oMult">x1</dd></div>
+      <div><dt>Gol</dt><dd id="oGoals">0</dd></div><div><dt>Çalım</dt><dd id="oDrib">0</dd></div>
+      <div><dt>En uzak gol</dt><dd id="oLong">-</dd></div>
     </dl>
     <button id="again" class="cta">TEKRAR OYNA</button>
     <button id="toMenu" class="ghost">Soyunma odası</button>
