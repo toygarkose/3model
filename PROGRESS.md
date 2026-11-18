@@ -11,15 +11,14 @@ Oturum kesilirse: bu dosyayı oku, "ŞU AN" bölümünden devam et.
 - [ ] KT6 — Cila ve teslim (performans, inceleme, tek dosya, README)
 
 ## ŞU AN
-Kod tabanının tamamı yazıldı ve derleniyor (sahne, koltuklar, kamera, UI, etkinlikler, ses, ağ).
-Elle (Playwright ekran görüntüsü) doğrulananlar: masaüstü orbit görünümü, hover tooltip,
-koltuğa uçuş, koltuk görünümü + kart + önizleme, telefon ilk görünüm.
-Sıradaki adımlar:
-1. tests/e2e.mjs yaz (npm test): yükleme, konsol, canvas dolu, koltuk tıklama, stadyuma dön,
-   dolu koltuk yönlendirme, etkinlik modu, bilet, 390x844 dokunmatik. Ekran görüntülerine bak.
-2. Maç demosu ve sahne modunu görsel olarak incele, cilala.
-3. Bilet / tepkiler / BroadcastChannel iki sekme testi.
-4. Tek dosya derleme, README, son kod incelemesi.
+Bütün kilometre taşlarının kodu yazıldı; `npm test` senaryoları (masaüstü, telefon, sunucu,
+dayanıklılık) ayrı ayrı koşulup geçti. README yazıldı, tek dosyalık derleme çalışıyor.
+Sıradaki adımlar (cila turu):
+1. Sağ sütun kart yerleşimi (koltuk seçiliyken harita kartıyla çakışma) düzeltildi → ekran
+   görüntüsüyle tekrar doğrula.
+2. Maç ve sahne modunu yakın planda incele; ışık / geçiş hissi / mobil cilası.
+3. Kod incelemesi (ölü kod, dispose), README'deki ekran görüntülerini docs/ altına koy.
+4. Son tam `npm test`, PROGRESS kutularını işaretle, commit + push.
 
 ## Notlar
 - Playwright küresel kurulu: /opt/node-tools/node_modules/playwright (1.63.0),

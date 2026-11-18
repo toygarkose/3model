@@ -230,7 +230,7 @@ class MatchSource implements EventSource {
       return;
     }
     const push = possession ? 7 : -4;
-    const run = possession && p.role === 'fwd' ? 6 : 0;
+    const run = possession ? (p.role === 'fwd' ? 13 : p.role === 'mid' ? 5 : 0) : 0;
     const tx = clamp(p.hx * 50 * 0.62 + bx * 0.55 + push + run, -this.HL + 8, this.HL - 5);
     out.x = tx * dir;
     out.z = clamp(p.hz * this.HW * 0.74 + this.ball.z * 0.3, -this.HW + 2, this.HW - 2);
@@ -302,7 +302,7 @@ class MatchSource implements EventSource {
     const g = Math.hypot(gx - p.x, p.z);
     const keeper = this.players.find((k) => k.team !== p.team && k.role === 'gk')!;
     const r = this.rng();
-    const pGoal = 0.2 + ((26 - Math.min(26, g)) / 26) * 0.2;
+    const pGoal = 0.14 + ((31 - Math.min(31, g)) / 31) * 0.24;
     let outcome: Shot['outcome'];
     let tz: number;
     if (r < pGoal) {
@@ -382,11 +382,11 @@ class MatchSource implements EventSource {
         }
         target.x = p.x + dx * 8;
         target.z = p.z + dz * 8;
-        maxSpeed = 6.0;
+        maxSpeed = 6.6;
       } else if (p === chasers[p.team]) {
         target.x = ball.x + ball.vx * 0.25;
         target.z = ball.z + ball.vz * 0.25;
-        maxSpeed = 7.8;
+        maxSpeed = p.cooldown > 0 ? 3.5 : 7.6;
       } else {
         this.homeTarget(p, !!owner && owner.team === p.team, target);
         // Serbest vuruşta rakip topa yaklaşmaz
@@ -417,12 +417,16 @@ class MatchSource implements EventSource {
         this.tackleT += dt;
         if (this.tackleT > 0.28) {
           this.tackleT = 0;
-          if (this.rng() < 0.3 && opp.cooldown <= 0) {
-            p.cooldown = 1.0;
-            this.owner = opp;
-            this.decisionT = 0.5 + this.rng() * 0.5;
-            this.note = `${this.teamName(opp.team)} topu kaptı`;
-            return;
+          if (opp.cooldown <= 0) {
+            if (this.rng() < 0.2) {
+              p.cooldown = 1.0;
+              this.owner = opp;
+              this.decisionT = 0.5 + this.rng() * 0.5;
+              this.note = `${this.teamName(opp.team)} topu kaptı`;
+              return;
+            }
+            // Çalım yedi: savunmacı bir süre geride kalır
+            opp.cooldown = 1.1;
           }
         }
       }
@@ -436,7 +440,7 @@ class MatchSource implements EventSource {
         const dn = near ? Math.hypot(near.x - p.x, near.z - p.z) : 99;
         if (p.role === 'gk') {
           this.tryPass(p, true);
-        } else if (g < 27 && this.rng() < (g < 17 ? 0.85 : 0.42)) {
+        } else if (g < 31 && this.rng() < (g < 17 ? 0.9 : g < 25 ? 0.5 : 0.16)) {
           this.shoot(p);
         } else if ((dn < 3.6 && this.rng() < 0.82) || this.rng() < 0.3) {
           this.tryPass(p, false);

@@ -279,7 +279,7 @@ p { margin: 0; }
 .card-event { left: var(--gap); top: calc(var(--gap) + 62px); }
 .card-camera { left: var(--gap); bottom: var(--gap); }
 .card-map { right: var(--gap); top: calc(var(--gap) + 62px); }
-.card-seat { right: var(--gap); bottom: var(--gap); max-height: calc(100vh - 430px); overflow: auto; scrollbar-width: thin; }
+.card-seat { right: var(--gap); bottom: var(--gap); max-height: calc(100vh - 78px - 368px - 2 * var(--gap)); overflow: auto; scrollbar-width: thin; }
 #ui[data-mode='seat'] .card-seat, #ui[data-mode='flying'] .card-seat { max-height: calc(100vh - 110px); }
 
 #ui[data-mode='intro'] .card, #ui[data-mode='intro'] .topbar { opacity: 0; }
@@ -349,7 +349,7 @@ input[type='url'] {
 
 /* Blok haritası + filtreler */
 #blockmap, #cammap { display: block; width: 100%; height: auto; }
-#blockmap { margin: 6px 0 8px; touch-action: manipulation; }
+#blockmap { margin: 4px 0 6px; max-height: 158px; touch-action: manipulation; }
 #blockmap path { stroke: var(--ink); stroke-width: 1.1; cursor: pointer; transition: opacity 0.2s ease; }
 #blockmap path:hover, #blockmap path.kb { stroke-width: 3; }
 #blockmap path.dim { opacity: 0.22; }
@@ -403,7 +403,7 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; background: v
 .stats > div { padding: 6px 9px; border-right: 2px solid var(--ink); }
 .stats > div:last-child { border-right: 0; background: var(--yellow); }
 .stats dd { font-size: 18px; }
-.preview { position: relative; margin-top: 10px; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; background: #0c1232; aspect-ratio: 16 / 9; }
+.preview { position: relative; margin-top: 8px; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; background: #0c1232; aspect-ratio: 16 / 9; }
 .preview canvas { display: block; width: 100%; height: 100%; }
 .preview-wait {
   position: absolute;
@@ -440,6 +440,7 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; background: v
 .perks li { display: flex; align-items: center; gap: 7px; }
 .perks li::before { content: ''; width: 9px; height: 9px; flex: none; background: var(--mint); border: 2px solid var(--ink); border-radius: 2px; transform: rotate(45deg); }
 .cta { margin-top: 11px; }
+.cta .btn { flex: 1 1 0; min-width: 0; padding: 8px 6px; font-size: 11.5px; letter-spacing: 0; }
 
 /* ---------- Koltuk araç çubuğu ---------- */
 .seatbar {
@@ -570,9 +571,15 @@ kbd { font-family: var(--mono); font-size: 11.5px; font-weight: 700; padding: 2p
   .seatbar { max-width: calc(100vw - 2 * var(--gap) - 540px); }
   .seatbar .lbl { display: none; }
 }
-@media (max-height: 760px) and (min-width: 761px) {
-  .perks { display: none; }
+@media (max-height: 940px) and (min-width: 761px) {
+  #ui[data-mode='orbit'] .perks, #ui[data-mode='intro'] .perks { display: none; }
+  .seat-title { font-size: 21px; margin-top: 6px; }
+  .stats { margin-top: 7px; }
+}
+@media (max-height: 800px) and (min-width: 761px) {
   .card-event .meta { display: none; }
+  #blockmap { max-height: 120px; }
+  .card-seat { max-height: calc(100vh - 78px - 330px - 2 * var(--gap)); }
 }
 
 /* ---------- Telefon: kartlar alttan açılan panele dönüşür ---------- */

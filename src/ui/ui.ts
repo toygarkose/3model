@@ -4,14 +4,13 @@ import type { Filter, Phase, Store, Ticket } from '../core/store';
 import { findSeatById, seatId, type Block, type SeatData } from '../data/seats';
 import type { EventSource, EventStatus } from '../events/types';
 import type { ReactionKind } from '../net/sync';
-import { hydrateIcons, icon, setIcon } from './icons';
+import { hydrateIcons, setIcon } from './icons';
 import { BlockMap, CameraMap } from './maps';
 
 export type SeatState = 'free' | 'taken' | 'mine';
 
 /** Arayüzün tetiklediği uygulama eylemleri (main.ts uygular). */
 export interface Actions {
-  selectSeat(seat: number): void;
   goToSeat(seat: number): void;
   backToStadium(): void;
   suggestSeat(): void;
@@ -536,7 +535,7 @@ export class UI {
         <kbd>0</kbd><span>Kamerayı sıfırla</span>
         <kbd>M</kbd><span>Sesi aç / kapat</span>
       </div>
-      <p class="help-note">${icon('') }Görüş puanı; koltuğun sahaya uzaklığı, bakış yüksekliği ve orta sahaya göre açısından hesaplanır. Koltuk bağlantısını paylaşırsan açan kişi doğrudan o koltuğa iner.</p>`;
+      <p class="help-note">Görüş puanı; koltuğun sahaya uzaklığı, bakış yüksekliği ve orta sahaya göre açısından hesaplanır. Koltuk bağlantısını paylaşırsan açan kişi doğrudan o koltuğa iner.</p>`;
     this.openDialog('help', 'Nasıl kullanılır?', html);
   }
 }

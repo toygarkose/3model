@@ -10,7 +10,7 @@
     "build:single": "tsc --noEmit && vite build --config vite.single.config.ts",
     "preview": "vite preview --port 4173 --strictPort",
     "server": "node server/server.mjs",
-    "test": "npm run build && node tests/e2e.mjs"
+    "test": "npm run build && npm run build:single && node tests/e2e.mjs"
   },
   "dependencies": {
     "three": "^0.187.0"

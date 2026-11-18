@@ -251,7 +251,6 @@ async function boot(): Promise<void> {
   }
 
   const actions: Actions = {
-    selectSeat: goToSeat,
     goToSeat,
     backToStadium() {
       if (store.get('mode') !== 'seat' || cam.locked) return;
@@ -607,7 +606,20 @@ async function boot(): Promise<void> {
   let ambientIn = 6;
   let currentQuality = quality;
   const fwd = new THREE.Vector3();
+  // Telefonda panel açıkken sahne, panelin üstünde kalan görünür alana ortalanır.
+  const panels = document.getElementById('panels')!;
+  const phoneLayout = matchMedia('(max-width: 760px)');
+  let panelHeight = 0;
+  let viewShift = 0;
+  let appliedShift = 0;
+  const measurePanel = (): void => {
+    panelHeight = phoneLayout.matches ? panels.offsetHeight : 0;
+    appliedShift = -1;
+  };
+  new ResizeObserver(measurePanel).observe(panels);
+  window.addEventListener('resize', measurePanel);
   const stats = { fps: 60, frameMs: 16, calls: 0, triangles: 0, quality };
+  let probeResolve: ((distinct: number) => void) | null = null;
 
   function frame(now: number): void {
     if (contextLost) return;
@@ -620,6 +632,14 @@ async function boot(): Promise<void> {
 
     director.update(dt);
     cam.update(dt);
+    const shiftTarget = store.get('mode') === 'intro' ? 0 : Math.max(0, panelHeight - 70) / 2;
+    viewShift += (shiftTarget - viewShift) * Math.min(1, dt * 9);
+    if (Math.abs(shiftTarget - viewShift) < 0.5) viewShift = shiftTarget;
+    if (Math.round(viewShift) !== appliedShift) {
+      appliedShift = Math.round(viewShift);
+      if (appliedShift === 0) kit.camera.clearViewOffset();
+      else kit.camera.setViewOffset(window.innerWidth, window.innerHeight, 0, appliedShift, window.innerWidth, window.innerHeight);
+    }
     stadium.update(dt, time);
 
     if (hoverPending && store.get('mode') === 'orbit' && !cam.locked) {
@@ -651,6 +671,20 @@ async function boot(): Promise<void> {
 
     field.update(dt, time, kit.camera);
     kit.renderer.render(kit.scene, kit.camera);
+    if (probeResolve) {
+      // Test kancası: çizilen karede kaç farklı renk var? (boş canvas tespiti)
+      const gl = kit.renderer.getContext();
+      const px = new Uint8Array(4);
+      const seen = new Set<number>();
+      for (let gy = 1; gy < 12; gy++) {
+        for (let gx = 1; gx < 12; gx++) {
+          gl.readPixels(Math.floor((canvas.width * gx) / 12), Math.floor((canvas.height * gy) / 12), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          seen.add((px[0] << 16) | (px[1] << 8) | px[2]);
+        }
+      }
+      probeResolve(seen.size);
+      probeResolve = null;
+    }
 
     kit.camera.getWorldDirection(fwd);
     ui.updateCamera(kit.camera.position.x, kit.camera.position.z, fwd.x, fwd.z, cam.zoomLevel);
@@ -684,6 +718,8 @@ async function boot(): Promise<void> {
   const api = {
     ready: false,
     scene: kit.scene,
+    camera: () => ({ pos: kit.camera.position.toArray(), dir: kit.camera.getWorldDirection(new THREE.Vector3()).toArray(), fov: kit.camera.fov, zoom: cam.zoomLevel }),
+    probe: () => new Promise<number>((resolve) => (probeResolve = resolve)),
     state: () => ({ ...store.snapshot, seatId: store.get('selectedSeat') >= 0 ? seatId(seats, store.get('selectedSeat')) : null, locked: cam.locked }),
     stats,
     status: () => director.status,

@@ -29,7 +29,11 @@ export function attachPointer(el: HTMLElement, h: PointerHandlers): () => void {
 
   const down = (e: PointerEvent): void => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    el.setPointerCapture?.(e.pointerId);
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* etkin olmayan işaretçi (sentetik olay): yakalamadan devam */
+    }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, t0: performance.now(), moved: false });
     if (pointers.size >= 2) {
       multi = true;
@@ -67,7 +71,11 @@ export function attachPointer(el: HTMLElement, h: PointerHandlers): () => void {
     const p = pointers.get(e.pointerId);
     if (!p) return;
     pointers.delete(e.pointerId);
-    el.releasePointerCapture?.(e.pointerId);
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* zaten bırakılmış */
+    }
     if (e.type === 'pointerup' && !p.moved && !multi && performance.now() - p.t0 < 700) {
       h.onTap(e.clientX, e.clientY, e.pointerType !== 'mouse');
     }
