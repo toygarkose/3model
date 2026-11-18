@@ -89,6 +89,53 @@ async function overflow(page, selectors) {
   }, selectors);
 }
 
+/** Görünür kartlar birbirinin üstüne biniyor mu? */
+async function overlaps(page) {
+  return page.evaluate(() => {
+    const els = [...document.querySelectorAll('.card-event, .card-camera, .card-map, .card-seat, .seatbar, .pill, .hint')].filter((el) => {
+      const st = getComputedStyle(el);
+      return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0.5;
+    });
+    const bad = [];
+    for (let i = 0; i < els.length; i++) {
+      for (let j = i + 1; j < els.length; j++) {
+        const a = els[i].getBoundingClientRect();
+        const b = els[j].getBoundingClientRect();
+        if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) bad.push(`${els[i].className.split(' ').pop()} × ${els[j].className.split(' ').pop()}`);
+      }
+    }
+    return bad;
+  });
+}
+
+/** Yaygın dizüstü çözünürlüğü: kısa ekranda kartlar sığıyor ve çakışmıyor mu? */
+async function laptop(browser, problems) {
+  console.log('\nDizüstü 1366x768');
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  watchConsole(page, 'dizüstü', problems);
+  await page.goto(BASE);
+  await waitReady(page);
+  check('kartlar çakışmıyor (orbit, seçim yok)', (await overlaps(page)).length === 0, (await overlaps(page)).join('; '));
+  await page.click('#btn-suggest');
+  await waitMode(page, 'seat');
+  await page.waitForTimeout(800);
+  await shot(page, 'l01-koltuk');
+  check('kartlar çakışmıyor (koltuk)', (await overlaps(page)).length === 0, (await overlaps(page)).join('; '));
+  check('arayüz taşmıyor (koltuk)', (await overflow(page, ['.card', '.seatbar'])).length === 0, (await overflow(page, ['.card', '.seatbar'])).join('; '));
+  await page.click('#btn-back');
+  await waitMode(page, 'orbit');
+  await page.waitForTimeout(800);
+  await shot(page, 'l02-orbit-secili');
+  check('kartlar çakışmıyor (orbit, koltuk seçili)', (await overlaps(page)).length === 0, (await overlaps(page)).join('; '));
+  const clipped = await page.evaluate(() => {
+    const el = document.querySelector('.card-seat');
+    return el.scrollHeight - el.clientHeight;
+  });
+  check('koltuk kartı kaydırma gerektirmiyor', clipped <= 2, `${clipped}px taşma`);
+  await ctx.close();
+}
+
 async function findSeat(page, taken) {
   await page.waitForFunction(() => window.__seyir.stable(), null, { timeout: LONG });
   const hit = await page.evaluate((t) => window.__seyir.findClickable(t), taken);
@@ -160,6 +207,7 @@ async function desktop(browser, problems) {
   check('kamera kartı gizlendi', !(await page.locator('.card-camera').isVisible()));
   await page.waitForTimeout(1500);
   await shot(page, 'd04-koltuk');
+  check('kartlar çakışmıyor (koltuk)', (await overlaps(page)).length === 0, (await overlaps(page)).join('; '));
   check('arayüz taşmıyor (koltuk)', (await overflow(page, ['.card', '.seatbar'])).length === 0, (await overflow(page, ['.card', '.seatbar'])).join('; '));
 
   // Etrafa bak
@@ -204,6 +252,7 @@ async function desktop(browser, problems) {
   check('stadyuma dön çalışıyor, kart son koltukta', st.mode === 'orbit' && st.seatId === afterBtn && (await text(page, '#seat-row')) === afterBtn.split('-')[1]);
   await page.waitForTimeout(600);
   await shot(page, 'd07-donus');
+  check('kartlar çakışmıyor (orbit, koltuk seçili)', (await overlaps(page)).length === 0, (await overlaps(page)).join('; '));
 
   // Dolu koltuk → aynı sıradaki en yakın boş koltuk
   const taken = await findSeat(page, true);
@@ -641,6 +690,7 @@ const problems = [];
 const only = process.argv[2];
 try {
   if (!only || only === 'desktop') await desktop(browser, problems);
+  if (!only || only === 'laptop') await laptop(browser, problems);
   if (!only || only === 'mobile') await mobile(browser, problems);
   if (!only || only === 'server') await server(browser, problems);
   if (!only || only === 'robust') await robustness(browser, problems);

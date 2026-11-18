@@ -2,7 +2,7 @@
  * Ses motoru: bütün sesler Web Audio ile üretilir (ses dosyası yok).
  * Tarayıcı politikası gereği yalnızca kullanıcı etkileşiminden sonra başlar.
  */
-export type SoundCue = 'goal' | 'applause' | 'cheer' | 'wave' | 'whistle' | 'ooh' | 'click';
+export type SoundCue = 'goal' | 'applause' | 'cheer' | 'wave' | 'whistle' | 'ooh';
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -209,9 +209,6 @@ export class AudioEngine {
         vib.stop(t + 0.8);
         break;
       }
-      case 'click':
-        this.clap(0, 0.12);
-        break;
     }
   }
 

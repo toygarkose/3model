@@ -81,6 +81,7 @@ export class UI {
       this.renderSeat();
     }, true);
     store.on('selectedSeat', (seat) => {
+      this.root.dataset.seat = seat >= 0 ? 'yes' : 'no';
       this.blockMap.setSeat(seat);
       $('map-selected').textContent = seat >= 0 ? `Blok ${data.blocks[data.block[seat]].id}` : '—';
       this.renderSeat();

@@ -50,9 +50,17 @@ export class CameraController {
   private flightDur = 1.3;
   private flightDone: (() => void) | null = null;
   private flightEndState: ControllerState = 'seat';
+  private fromYaw = 0;
+  private fromPitch = 0;
+  private toYaw = 0;
+  private toPitch = 0;
+  /** Büyük dönüş gerektiren uçuşlarda önce koltuğa bakılır, sonra hedef yöne dönülür. */
+  private approach = false;
+  private readonly anchor = new THREE.Vector3();
+  private aimYaw = 0;
+  private aimPitch = 0;
 
   private seatIndex = -1;
-  private seatEye = new THREE.Vector3();
   private lookYaw = 0;
   private lookPitch = 0;
   private lookYawT = 0;
@@ -218,6 +226,9 @@ export class CameraController {
     this.flightFrom.pos.copy(this.camera.position);
     this.flightFrom.quat.copy(this.camera.quaternion);
     this.flightFrom.fov = this.camera.fov;
+    this.euler.setFromQuaternion(this.camera.quaternion, 'YXZ');
+    this.fromYaw = this.euler.y;
+    this.fromPitch = this.euler.x;
     this.flightT = 0;
     this.flightDur = dur;
     this.flightEndState = endState;
@@ -233,13 +244,13 @@ export class CameraController {
     this.seatFov = this.seatFovT = this.camera.aspect < 1 ? 70 : 62;
     this.beginFlight(1.35, 'seat', done);
     this.seatPose(seat, this.flightTo, 0, 0, this.seatFov);
-    this.seatEye.copy(this.flightTo.pos);
+    this.aimFlight(seat);
     // Kontrol noktaları çanağın açık iç hacminde: tribün ve çatının içinden geçilmez.
     const from = this.flightFrom.pos;
     const to = this.flightTo.pos;
     this.c1.set(from.x * 0.55, Math.max(from.y, this.venue.facade.height + 28), from.z * 0.55);
     const inward = this.tmpV.set(-to.x, 0, -to.z).normalize();
-    this.c2.copy(to).addScaledVector(inward, 26).setY(to.y + 14);
+    this.c2.copy(to).addScaledVector(inward, this.approach ? 26 : 9).setY(to.y + 15);
   }
 
   /** Koltuktan orbit konumuna aynı uçuşla geri çıkış. */
@@ -248,10 +259,11 @@ export class CameraController {
     this.beginFlight(1.25, 'orbit', done);
     this.orbit = { ...this.orbitTarget };
     this.orbitPose(this.orbit, this.flightTo);
+    this.aimFlight(this.seatIndex);
     const from = this.flightFrom.pos;
     const to = this.flightTo.pos;
     const inward = this.tmpV.set(-from.x, 0, -from.z).normalize();
-    this.c1.copy(from).addScaledVector(inward, 26).setY(from.y + 14);
+    this.c1.copy(from).addScaledVector(inward, this.approach ? 26 : 9).setY(from.y + 15);
     this.c2.set(to.x * 0.55, Math.max(to.y, this.venue.facade.height + 28), to.z * 0.55);
   }
 
@@ -262,7 +274,7 @@ export class CameraController {
     this.beginFlight(0.38, 'seat', done);
     this.state = 'hop';
     this.seatPose(seat, this.flightTo, this.lookYawT, this.lookPitchT, this.seatFovT);
-    this.seatEye.copy(this.flightTo.pos);
+    this.aimFlight(-1);
     this.lookYaw = this.lookYawT;
     this.lookPitch = this.lookPitchT;
     this.seatFov = this.seatFovT;
@@ -270,7 +282,23 @@ export class CameraController {
     this.c2.lerpVectors(this.flightFrom.pos, this.flightTo.pos, 0.66);
   }
 
-  /** Açılışta doğrudan koltuğa yerleş (bağlantıdan gelindiğinde uçuş orbit'ten başlar). */
+  /** Uçuşun hedef açılarını ve (koltuk verilirse) yaklaşma bakışını hazırlar. */
+  private aimFlight(anchorSeat: number): void {
+    this.euler.setFromQuaternion(this.flightTo.quat, 'YXZ');
+    this.toYaw = this.euler.y;
+    this.toPitch = this.euler.x;
+    this.approach = false;
+    if (anchorSeat >= 0) {
+      const d = this.seats;
+      this.anchor.set(d.pos[anchorSeat * 3], d.pos[anchorSeat * 3 + 1] + 0.9, d.pos[anchorSeat * 3 + 2]);
+      // Başlangıç değeri: sahadan koltuğa doğru bakış (koltuğun baktığı yönün tersi)
+      this.aimYaw = d.yaw[anchorSeat];
+      this.aimPitch = -0.35;
+      this.approach = Math.abs(wrapAngle(this.toYaw - this.fromYaw)) > 1.0;
+    }
+  }
+
+  /** Etkinlik odağını değiştirir (ör. sahne modunda sahne). */
   setFocus(x: number, y: number, z: number): void {
     this.focus.set(x, y, z);
   }
@@ -320,7 +348,29 @@ export class CameraController {
           .addScaledVector(b, e * e * e);
         // Bakış, yolun ikinci yarısında hedefe kilitlenir: iniş hissi.
         const r = this.state === 'hop' ? e : easeInOutCubic(clamp(this.flightT * 1.15, 0, 1));
-        this.camera.quaternion.copy(this.flightFrom.quat).slerp(this.flightTo.quat, r);
+        // Yön, yalpa (roll) oluşmasın diye sapma/yunuslama açıları üzerinden ilerler.
+        if (this.approach) {
+          // Karşı tribüne inerken önce koltuğa bakarak yaklaş, son yarıda sahaya dön;
+          // çıkarken önce koltuğa dön, ona bakarak geri çekil.
+          const p = this.camera.position;
+          const dx = this.anchor.x - p.x;
+          const dy = this.anchor.y - p.y;
+          const dz = this.anchor.z - p.z;
+          if (dx * dx + dy * dy + dz * dz > 49) {
+            this.aimYaw = Math.atan2(-dx, -dz);
+            this.aimPitch = Math.atan2(dy, Math.hypot(dx, dz));
+          }
+          const arriving = this.flightEndState === 'seat';
+          const t = this.flightT;
+          const a1 = arriving ? easeOutCubic(clamp(t / 0.4, 0, 1)) : easeInOutCubic(clamp(t / 0.5, 0, 1));
+          const b1 = easeInOutCubic(clamp((t - (arriving ? 0.5 : 0.55)) / (arriving ? 0.5 : 0.45), 0, 1));
+          const y1 = this.fromYaw + wrapAngle(this.aimYaw - this.fromYaw) * a1;
+          const p1 = lerp(this.fromPitch, this.aimPitch, a1);
+          this.euler.set(lerp(p1, this.toPitch, b1), y1 + wrapAngle(this.toYaw - y1) * b1, 0);
+        } else {
+          this.euler.set(lerp(this.fromPitch, this.toPitch, r), this.fromYaw + wrapAngle(this.toYaw - this.fromYaw) * r, 0);
+        }
+        this.camera.quaternion.setFromEuler(this.euler);
         // Uçuşun ortasında görüş açısı hafifçe genişler: hız hissi
         const kick = this.state === 'hop' ? 0 : Math.sin(Math.PI * e) * 7;
         this.setFov(lerp(this.flightFrom.fov, this.flightTo.fov, e) + kick);

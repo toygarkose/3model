@@ -769,10 +769,18 @@ async function boot(): Promise<void> {
     else if (hash.seat) ui.toast('Bağlantıdaki koltuk bulunamadı.', 'info');
   });
 
-  window.addEventListener('pagehide', () => {
+  window.addEventListener('pagehide', (e) => {
     detach();
     sync.dispose();
     audio.dispose();
+    if (!e.persisted) {
+      // Sayfa gerçekten kapanıyor: GPU kaynaklarını bırak
+      contextLost = true;
+      director.dispose();
+      field.dispose();
+      stadium.dispose();
+      kit.dispose();
+    }
   });
   // Geri/ileri önbelleğinden dönülürse bağlantılar kapalıdır: temiz başlat
   window.addEventListener('pageshow', (e) => {
