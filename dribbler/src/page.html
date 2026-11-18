@@ -63,12 +63,45 @@ button:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); letter-spacing: -.01em; text-shadow: 4px 4px 0 var(--flare); }
 #best { margin: 12px 0 0; font: 600 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--volt); text-shadow: 0 2px 0 var(--night), 0 0 12px var(--night); }
 .sheet { background: linear-gradient(180deg, rgba(13,18,51,.82), var(--night) 30%); border-top: 2px solid var(--line); padding: 10px 0 max(14px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
+.navrow { display: flex; align-items: center; gap: 10px; padding: 0 var(--gr) 0 var(--gl); }
+#nav { display: flex; flex: 1; min-width: 0; border: 2px solid var(--line); }
+#nav button { flex: 1; min-width: 0; padding: 9px 4px; font: 800 16px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+#nav button[aria-selected="true"] { background: var(--chalk); color: var(--night); }
+#coins { flex: none; font: italic 800 22px/1 var(--display); color: var(--volt); font-variant-numeric: tabular-nums; }
+.panel { display: flex; flex-direction: column; gap: 8px; min-height: 176px; max-height: 38vh; overflow-y: auto; }
+#pMatch, #pSkills { padding: 0 var(--gr) 0 var(--gl); }
+.fixture { display: flex; flex-direction: column; gap: 3px; }
+.fixture span { font: 600 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.fixture b { font: italic 800 24px/1 var(--display); text-transform: uppercase; }
+.league { width: 100%; border-collapse: collapse; font: 600 14px/1 var(--display); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.league th { font-size: 11px; letter-spacing: .14em; color: var(--dim); text-align: right; padding: 2px 6px 4px; font-weight: 600; }
+.league td { text-align: right; padding: 3.5px 6px; border-top: 1px solid var(--line); color: var(--dim); }
+.league th:nth-child(2), .league td:nth-child(2) { text-align: left; width: 100%; text-transform: uppercase; }
+.league td:last-child { color: var(--chalk); font-weight: 800; }
+.league tr.me td { color: var(--night); background: var(--volt); }
+.league tr.next td:nth-child(2) { color: var(--mint); }
+#skills { display: flex; flex-direction: column; gap: 8px; }
+.skill { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.sinfo { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; }
+.sinfo b { font: 800 19px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+.pips { display: flex; gap: 4px; }
+.pips i { width: 16px; height: 8px; background: var(--line); transform: skewX(-14deg); }
+.pips i.on { background: var(--mint); }
+.sdesc { grid-column: 1 / -1; font-size: 13px; line-height: 1.3; color: var(--dim); }
+.buy { flex: none; min-width: 72px; padding: 9px 12px; font: 800 17px/1 var(--display); letter-spacing: .04em; color: var(--night); background: var(--volt); transform: skewX(-6deg); }
+.buy:disabled { background: transparent; color: var(--dim); box-shadow: inset 0 0 0 2px var(--line); cursor: default; }
+.buy.inline { margin-left: 10px; padding: 6px 10px; font-size: 14px; letter-spacing: .06em; }
+.sw { position: relative; }
+.sw.locked { opacity: .78; }
+.sw.locked span { position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); padding: 2px 5px; font: 800 11px/1 var(--display); color: var(--night); background: var(--chalk); letter-spacing: 0; }
+#oNote { color: var(--volt); font: 800 18px/1.25 var(--display); letter-spacing: .03em; text-transform: uppercase; max-width: none; }
+@keyframes drift { 0% { transform: translate(calc(var(--drift) * -1), 0); } 25% { transform: translate(0, var(--drift)); } 50% { transform: translate(var(--drift), 0); } 75% { transform: translate(0, calc(var(--drift) * -1)); } 100% { transform: translate(calc(var(--drift) * -1), 0); } }
 #tabs { display: flex; gap: 4px; padding: 0 var(--gr) 0 var(--gl); }
 #tabs button { flex: 1; min-width: 0; padding: 9px 2px; font: 800 16px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); border-bottom: 3px solid transparent; }
 #tabs button[aria-selected="true"] { color: var(--chalk); border-color: var(--volt); }
-#opts { display: flex; flex-direction: column; gap: 8px; min-height: 132px; justify-content: center; }
+#opts { display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
 .optlabel { padding: 0 var(--gr) 0 var(--gl); font: 600 12px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
-.swatches { display: flex; gap: 10px; overflow-x: auto; padding: 4px var(--gr) 4px var(--gl); scrollbar-width: none; }
+.swatches { display: flex; gap: 10px; overflow-x: auto; padding: 4px var(--gr) 10px var(--gl); scrollbar-width: none; }
 .swatches::-webkit-scrollbar { display: none; }
 .sw { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--line); }
 .sw.txt { width: auto; min-width: 46px; height: 40px; border-radius: 0; padding: 0 14px; font: 800 18px/1 var(--display); letter-spacing: .04em; background: var(--night-2); transform: skewX(-8deg); }
@@ -113,10 +146,21 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
   <section id="menu" class="layer">
     <header><h1>DRIBBLER</h1><p id="best"></p></header>
     <div class="sheet">
-      <div id="tabs" role="tablist">
-        <button role="tab" data-tab="kit">Forma</button><button role="tab" data-tab="boots">Krampon</button><button role="tab" data-tab="ball">Top</button><button role="tab" data-tab="hair">Saç</button><button role="tab" data-tab="skin">Ten</button>
+      <div class="navrow">
+        <div id="nav" role="tablist"><button role="tab" data-p="match">Maç</button><button role="tab" data-p="skills">Yetenek</button><button role="tab" data-p="look">Görünüm</button></div>
+        <div id="coins" aria-label="Paran">0 ₺</div>
       </div>
-      <div id="opts"></div>
+      <div id="pMatch" class="panel">
+        <div class="fixture"><span>Sıradaki maç</span><b id="fixture"></b></div>
+        <table class="league"><thead><tr><th>#</th><th>Takım</th><th>O</th><th>Av</th><th>P</th></tr></thead><tbody id="table"></tbody></table>
+      </div>
+      <div id="pSkills" class="panel" hidden><div id="skills"></div></div>
+      <div id="pLook" class="panel" hidden>
+        <div id="tabs" role="tablist">
+          <button role="tab" data-tab="kit">Forma</button><button role="tab" data-tab="boots">Krampon</button><button role="tab" data-tab="ball">Top</button><button role="tab" data-tab="hair">Saç</button><button role="tab" data-tab="skin">Ten</button>
+        </div>
+        <div id="opts"></div>
+      </div>
       <div class="actions">
         <button id="play" class="cta">MAÇA ÇIK</button>
         <div class="minor"><button id="tSound">Ses: Açık</button><button id="bHow">Nasıl oynanır?</button></div>
@@ -132,7 +176,7 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
       <li><div class="key">●</div><div><b>Vuruş noktasını seç</b><span>Bırakınca büyük bir top çıkar. Altına dokunursan top havalanır, yanına dokunursan falso alır, ortasına dokunursan düz gider.</span></div></li>
       <li><div class="key">→</div><div><b>Pas anları</b><span>Turkuaz çizgi arkadaşının koşu yolunu gösterir. Topu olduğu yere değil, koştuğu yere at.</span></div></li>
     </ul>
-    <p>Frikikte baraj sıçrar: üstünden aşır ya da yanından falsoyla dolandır.</p>
+    <p>Frikikte baraj sıçrar: üstünden aşır ya da yanından falsoyla dolandır. Maçlardan kazandığın parayla yetenek geliştirir, forma, krampon ve top açarsın.</p>
     <button id="howOk" class="cta">ANLADIM</button>
   </section>
 
@@ -141,8 +185,9 @@ h1 { margin: 0; font: italic 800 clamp(56px, 19vw, 96px)/.85 var(--display); let
     <div><div id="oScore">0 - 0</div><div id="oRival"></div></div>
     <dl class="stats">
       <div><dt>Gol</dt><dd id="oGoals">0</dd></div><div><dt>Asist</dt><dd id="oAst">0</dd></div>
-      <div><dt>Maç puanın</dt><dd id="oRate">6.0</dd></div><div><dt>Lig puanı</dt><dd id="oPts">0</dd></div>
+      <div><dt>Maç puanın</dt><dd id="oRate">6.0</dd></div><div><dt>Kazanç</dt><dd id="oCoin">+0 ₺</dd></div>
     </dl>
+    <p id="oNote" hidden></p>
     <button id="again" class="cta">SONRAKİ MAÇ</button>
     <button id="toMenu" class="ghost">Soyunma odası</button>
   </section>

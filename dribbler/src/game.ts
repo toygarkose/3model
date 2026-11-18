@@ -5,18 +5,19 @@ import { Particles } from './fx';
 import { Sfx } from './audio';
 import { makeBallTexture } from './cosmetics';
 
-export type MomentType = 'shot' | 'freekick' | 'pass';
+export type MomentType = 'shot' | 'freekick' | 'pass' | 'cross' | 'penalty' | 'oneone';
+export interface Skills { power: number; curve: number; calm: number; tech: number }
 export type MomentResult = 'goal' | 'assist' | 'miss';
 export interface Summary { us: number; them: number; goals: number; assists: number; rating: number; rival: string }
 export interface Hooks {
   popup(text: string, kind: 'perfect' | 'good' | 'warn'): void;
   board(us: number, them: number, minute: number, rival: string, results: MomentResult[]): void;
   prompt(title: string, text: string): void;
-  contact(on: boolean, time: number): void;
+  contact(on: boolean, time: number, drift: number): void;
   over(s: Summary): void;
 }
 
-const BALL_R = 0.15, POST_R = 0.07, G = 9.81, MOMENTS = 5, CONTACT_TIME = 1.7;
+const BALL_R = 0.15, POST_R = 0.07, G = 9.81, MOMENTS = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const vib = (p: number | number[]) => { try { navigator.vibrate?.(p); } catch { /* titreşim desteklenmiyor */ } };
@@ -31,6 +32,8 @@ export class Game {
   private ball: THREE.Mesh; private ballMat: THREE.MeshStandardMaterial; private arrow: THREE.Group; private arrowMat: THREE.MeshBasicMaterial; private runLine: THREE.Mesh;
   private fx = new Particles(); private defs: Def[] = []; private pool: Footballer[] = []; private rivalLook!: Look;
   // maç
+  private sk: Skills = { power: 0, curve: 0, calm: 0, tech: 0 }; private first = false; private contactTime = 1.3;
+  private feed() { return this.type === 'pass' || this.type === 'cross'; }
   private level = 0; private rival = ''; private us = 0; private them = 0; private idx = -1; private minutes: number[] = []; private results: MomentResult[] = [];
   private goals = 0; private assists = 0; private type: MomentType = 'shot';
   // an
@@ -69,12 +72,13 @@ export class Game {
   setBall(b: { base: string; patch: string; style: string }) { const o = this.ballMat.map; this.ballMat.map = makeBallTexture(b); this.ballMat.needsUpdate = true; o?.dispose(); }
 
   toMenu() {
-    this.mode = 'menu'; this.clearDefs(); this.arrow.visible = false; this.runLine.visible = false; this.mate.root.visible = false; this.hooks.contact(false, 0);
+    this.mode = 'menu'; this.clearDefs(); this.arrow.visible = false; this.runLine.visible = false; this.mate.root.visible = false; this.hooks.contact(false, 0, 0);
     this.player.root.position.set(0, 0, 0); this.kx = 0; this.kz = GZ + 0.7; this.kState = 'set'; this.plan = null;
     this.camera.fov = 40; this.camera.updateProjectionMatrix();
   }
 
-  startMatch(level: number, rival: string) {
+  startMatch(level: number, rival: string, skills: Skills, first: boolean) {
+    this.sk = skills; this.first = first; this.contactTime = 1.25 + 0.2 * skills.calm;
     this.level = level; this.rival = rival; this.us = this.them = 0; this.idx = -1; this.results = []; this.goals = this.assists = 0;
     this.minutes = [rnd(4, 17), rnd(20, 38), rnd(41, 58), rnd(60, 75), rnd(78, 90)].map(Math.round);
     this.camera.fov = 58; this.camera.updateProjectionMatrix();
@@ -96,7 +100,7 @@ export class Game {
     let news = '';
     if (Math.random() < Math.min(0.5, 0.2 + this.level * 0.025)) { this.them++; news = `${Math.max(1, this.minutes[this.idx] - Math.round(rnd(2, 9)))}' ${this.rival} gol attı. `; this.sfx.crowd(0.05); }
     const lv = this.level, r = Math.random();
-    this.type = this.idx === 0 && lv === 0 ? 'shot' : r < 0.45 ? 'shot' : r < 0.75 ? 'freekick' : 'pass';
+    this.type = this.idx === 0 && this.first ? 'shot' : r < 0.28 ? 'shot' : r < 0.47 ? 'freekick' : r < 0.65 ? 'pass' : r < 0.8 ? 'cross' : r < 0.92 ? 'oneone' : 'penalty';
     this.clearDefs(); this.mate.root.visible = false; this.runLine.visible = false;
     const side = Math.random() < 0.5 ? -1 : 1;
     let title = '', text = '';
@@ -111,16 +115,34 @@ export class Game {
       const tx = side * 1.6 - this.spot.x, tz = GZ - this.spot.z, tl = Math.hypot(tx, tz), ux = tx / tl, uz = tz / tl, n = lv >= 3 ? 4 : 3;
       for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 0.66; this.addDef(this.spot.x + ux * 9.15 - uz * o, this.spot.z + uz * 9.15 + ux * o, true); }
       title = 'Frikik'; text = 'Faul! Barajı aş, kaleciyi geç.';
-    } else {
+    } else if (this.type === 'pass') {
       this.spot.set(side * rnd(2, 9), BALL_R, GZ + rnd(31, 36));
       this.mx = -side * rnd(5, 9); this.mz = GZ + rnd(23, 26); this.mTo.set(-side * rnd(1, 4), GZ + 9); this.mGot = false; this.mPhase = 0;
       this.mate.root.visible = true;
       this.addDef((this.spot.x + this.mx) / 2 + rnd(-1.5, 1.5), GZ + rnd(27, 29)); this.addDef(-side * rnd(-2, 3), GZ + rnd(14, 17));
       if (lv >= 2) this.addDef(this.mTo.x + rnd(3, 5) * side, GZ + rnd(11, 13));
       title = 'Pas'; text = 'Arkadaşın koşuya kalkacak. Topu önüne at.';
+    } else if (this.type === 'cross') {
+      // kanattan orta: arkadaşın ceza sahasına koşar, top havadan da gelebilir
+      this.spot.set(side * rnd(14, 17.5), BALL_R, GZ + rnd(7, 14));
+      this.mx = -side * rnd(0, 4); this.mz = GZ + rnd(16, 19); this.mTo.set(side * rnd(-2, 1.5), GZ + rnd(6, 8)); this.mGot = false; this.mPhase = 0; this.mate.root.visible = true;
+      this.addDef(side * rnd(5, 8), this.spot.z + rnd(-1.5, 1.5)); this.addDef(this.mTo.x - side * rnd(1.6, 2.6), GZ + rnd(5, 7));
+      if (lv >= 2) this.addDef(this.mTo.x + side * rnd(2, 3), GZ + rnd(8, 10));
+      title = 'Orta'; text = 'Kanattasın. Topu arkadaşının koştuğu yere kes.';
+    } else if (this.type === 'penalty') {
+      this.spot.set(0, BALL_R, GZ + 11);
+      title = 'Penaltı'; text = 'Kaleci bir köşe seçecek. Sen de seç.';
+    } else {
+      // karşı karşıya: kaleci üstüne gelir, açı daralır
+      this.spot.set(side * rnd(0, 5), BALL_R, GZ + rnd(15, 18));
+      title = 'Karşı karşıya'; text = 'Kaleci üstüne geliyor. Köşeye yerleştir ya da aşırt.';
     }
+    if (this.minutes[this.idx] >= 78) text = 'Son dakikalar. ' + text;
     this.ball.visible = true; this.ball.position.copy(this.spot); this.bv.set(0, 0, 0); this.live = false; this.inGoal = false; this.hitPost = false; this.byMate = false; this.curveT = 0;
     const fl = Math.hypot(this.spot.x, this.spot.z - GZ); this.fwd.set(-this.spot.x / fl, (GZ - this.spot.z) / fl);
+    // pas ve ortada kamera topun tam arkasında değildir; çekiş yönü kameranın baktığı yöne göre hesaplanır
+    if (this.type === 'pass') this.fwd.set(0.2 * (this.mx - this.spot.x), -19).normalize();
+    if (this.type === 'cross') this.fwd.set(-0.5 * this.spot.x, -18).normalize();
     this.kState = 'set'; this.plan = null; this.kx = clamp(this.spot.x * 0.12, -1.5, 1.5); this.kz = GZ + 0.7;
     this.kicker = 'player'; this.kickT = 9; this.aiming = false; this.power = 0; this.arrow.visible = false;
     this.mode = 'intro'; this.t = 0;
@@ -150,18 +172,19 @@ export class Game {
   aimRelease() {
     if (this.mode !== 'aim') return;
     if (!this.aiming || this.power < 0.08) { this.aiming = false; this.arrow.visible = false; return; }
-    this.mode = 'contact'; this.t = 0; this.aiming = false; this.hooks.contact(true, CONTACT_TIME); this.hooks.prompt('', 'Topun neresine vuracaksın?'); vib(15);
+    this.mode = 'contact'; this.t = 0; this.aiming = false; this.hooks.contact(true, this.contactTime, Math.max(0, 20 - this.sk.calm * 4 + Math.min(8, this.level))); this.hooks.prompt('', 'Topun neresine vuracaksın?'); vib(15);
   }
   /** cx, cy: topun üzerindeki vuruş noktası (-1..1). Alt = havalanır, yan = falso. */
   contact(cx: number, cy: number) {
     if (this.mode !== 'contact') return;
-    this.hooks.contact(false, 0); this.hooks.prompt('', '');
+    this.hooks.contact(false, 0, 0); this.hooks.prompt('', '');
     const l = Math.hypot(cx, cy); if (l > 1) { cx /= l; cy /= l; }
     const p = this.power, off = Math.min(1, Math.hypot(cx, cy));
-    const v = (9 + 24 * p) * (1 - 0.12 * off), th = clamp(0.13 - cy * (cy < 0 ? 0.33 : 0.115), 0.015, 0.5) * (0.6 + 0.4 * p);
-    const d = this.aimDir, qx = -d.y, qz = d.x;
+    const v = (9 + (20 + 1.6 * this.sk.power) * p) * (1 - 0.12 * off), th = clamp(0.13 - cy * (cy < 0 ? 0.33 : 0.115), 0.015, 0.5) * (0.6 + 0.4 * p);
+    // teknik: sert vuruşlarda yön biraz sapar, yetenek arttıkça azalır
+    const er = (Math.random() - 0.5) * 2 * Math.max(0.006, 0.042 - 0.007 * this.sk.tech) * p, d = this.aimDir.clone().rotateAround(new THREE.Vector2(), er), qx = -d.y, qz = d.x;
     this.launch(d.x, d.y, v, th);
-    const k = -cx * 11 * (0.35 + 0.65 * p); this.curve.set(qx * k, 0, qz * k); this.curveT = Math.abs(cx) > 0.12 ? 1.7 : 0;
+    const k = -cx * (8 + 1.5 * this.sk.curve) * (0.35 + 0.65 * p); this.curve.set(qx * k, 0, qz * k); this.curveT = Math.abs(cx) > 0.12 ? 1.7 : 0;
     this.kicker = 'player'; this.kickT = 0; this.byMate = false;
     this.hooks.popup(Math.round(v * 3.6) + ' km/s', 'good');
     this.hitstop = 0.05 + 0.04 * p; this.shake = 0.12 + 0.25 * p; this.sfx.strike(p); vib(30 + Math.round(60 * p));
@@ -191,6 +214,10 @@ export class Game {
     const onTarget = Math.abs(p.x) < GOAL_W + 0.9 && p.y < GOAL_H + 0.6, reach = onTarget && need <= can && p.y < 2.8;
     const sp = w.length(), kind = sp < 19 || (need < -0.2 && sp < 25) ? 'catch' : can - need < 0.3 ? 'tip' : 'parry';
     this.plan = { T, x: p.x, y: p.y, from: this.kx, dir: Math.sign(p.x - this.kx) || 1, dist: reach ? Math.max(0, lateral - 0.25) : Math.min(lateral, can + 0.4), reach, kind, done: false, dive: onTarget && lateral > 0.85 };
+    if (this.type === 'penalty' && Math.random() > 0.42 + this.level * 0.02) {
+      // penaltıda kaleci tahmin eder: yanlış köşeye giderse yetişemez
+      const pl = this.plan; pl.reach = false; pl.dir = Math.abs(p.x) < 0.8 ? (Math.random() < 0.5 ? -1 : 1) : -Math.sign(p.x); pl.dist = 2.4; pl.dive = true;
+    }
     if (onTarget || Math.abs(p.x) < 6) { this.kState = 'dive'; this.kT = 0; }
   }
 
@@ -203,8 +230,8 @@ export class Game {
     const dt = this.mode === 'contact' ? dtReal * 0.05 : dtReal * (this.slow > 0 ? 0.35 : 1);
     this.t += dtReal; this.kickT += dt;
 
-    if (this.mode === 'intro' && this.t > 1.5) { this.mode = 'aim'; this.hooks.prompt('', this.type === 'pass' ? 'Geri çek, arkadaşının önüne nişan al, bırak' : 'Geri çek, nişan al, bırak'); }
-    if (this.mode === 'contact' && this.t > CONTACT_TIME) this.contact(0, 0);
+    if (this.mode === 'intro' && this.t > 1.5) { this.mode = 'aim'; this.hooks.prompt('', this.feed() ? 'Geri çek, arkadaşının önüne nişan al, bırak' : 'Geri çek, nişan al, bırak'); }
+    if (this.mode === 'contact' && this.t > this.contactTime) this.contact(0, 0);
     if (this.mode === 'result' && this.t > 1.9) this.nextMoment();
 
     // nişan oku
@@ -243,18 +270,18 @@ export class Game {
     // takım arkadaşı
     if (this.mate.root.visible) {
       let p: Pose; const m = this.mate;
-      const running = this.type === 'pass' && (this.mode === 'fly' || this.mode === 'contact') && !this.mGot && !this.byMate;
+      const running = this.feed() && (this.mode === 'fly' || this.mode === 'contact') && !this.mGot && !this.byMate;
       if (this.mode === 'aim' || this.mode === 'intro') {
         // koşu çizgisi: nereye koşacağını gösterir
         const lx = this.mTo.x - this.mx, lz = this.mTo.y - this.mz; this.runLine.visible = true; this.runLine.position.set(this.mx, 0.035, this.mz); this.runLine.rotation.y = Math.atan2(lx, lz); this.runLine.scale.set(1, Math.hypot(lx, lz), 1);
         const w = Math.sin(this.clock * 6); p = pose({ shR: 2.7 + 0.2 * w, saR: 0.3, elR: 0.2, thL: 0.3, knL: 0.5, pitch: 0.15 }); m.baseYaw = Math.atan2(lx, lz);
       } else if (running && this.mode === 'fly') {
         let tx = this.mTo.x, tz = this.mTo.y; const b = this.ball.position, bd = Math.hypot(b.x - this.mx, b.z - this.mz);
-        if (bd < 5 && b.y < 1.2) { tx = b.x + this.bv.x * 0.2; tz = b.z + this.bv.z * 0.2; }   // top yakınsa üstüne gider
+        if (bd < 5 && b.y < (this.type === 'cross' ? 4 : 1.2)) { tx = b.x + this.bv.x * 0.2; tz = b.z + this.bv.z * 0.2; }   // top yakınsa üstüne gider
         const dx = tx - this.mx, dz = tz - this.mz, l = Math.hypot(dx, dz), s = 6.8 * dt;
         if (l > 0.3) { this.mx += dx / l * s; this.mz += dz / l * s; this.mPhase += s * 1.8; m.baseYaw = Math.atan2(dx, dz); }
         p = runPose(this.mPhase, 1, 0.22);
-        if (bd < 1.25 && b.y < 1.0 && this.live && this.sinceKick > 0.25) this.mateShoots();
+        if (bd < (this.type === 'cross' ? 1.6 : 1.25) && b.y < (this.type === 'cross' ? 2.7 : 1.0) && this.live && this.sinceKick > 0.25) this.mateShoots();
       } else if (this.kickT < 0.42 && this.kicker === 'mate') p = this.kickPose(this.kickT);
       else p = this.celebrating() ? this.cheer() : this.readyPose();
       m.root.position.set(this.mx, 0, this.mz); m.setPose(p, dt, 16);
@@ -271,12 +298,13 @@ export class Game {
   /** Pas ulaştı: arkadaşın tek vuruşla uzak köşeye vurur */
   private mateShoots() {
     this.mGot = true; this.byMate = true; this.kicker = 'mate'; this.kickT = 0; this.power = 0.9;
-    const b = this.ball.position; b.y = BALL_R;
-    const tx = (this.kx > 0 ? -1 : 1) * rnd(2.3, 3.2), ty = rnd(0.4, 1.7), v = 26;
+    const b = this.ball.position, head = b.y > 1.0; if (!head) b.y = BALL_R;
+    const tx = (this.kx > 0 ? -1 : 1) * rnd(2.3, 3.2), ty = rnd(0.4, 1.7), v = head ? 19 : 26;
     let dx = tx - b.x, dz = GZ - b.z; const D = Math.hypot(dx, dz); dx /= D; dz /= D;
-    const disc = v ** 4 - G * (G * D * D + 2 * (ty - BALL_R) * v * v), th = disc > 0 ? Math.atan((v * v - Math.sqrt(disc)) / (G * D)) : 0.3;
+    const disc = v ** 4 - G * (G * D * D + 2 * (ty - b.y) * v * v), th = disc > 0 ? Math.atan((v * v - Math.sqrt(disc)) / (G * D)) : 0.3;
     this.mate.baseYaw = Math.atan2(dx, dz);
-    this.launch(dx, dz, v, th); this.hooks.popup('PAS ULAŞTI!', 'good'); this.sfx.strike(0.9); this.shake = 0.2; vib(40);
+    if (this.kState !== 'hold') this.kState = 'set';
+    this.launch(dx, dz, v, th); this.hooks.popup(head ? 'KAFA!' : this.type === 'cross' ? 'ORTA YERİNDE!' : 'PAS ULAŞTI!', 'good'); this.sfx.strike(0.9); this.shake = 0.2; vib(40);
     this.fx.emit(b.clone(), 0xffffff, 16, 5, 0.7, 0.4);
     this.planKeeper(v);
   }
@@ -286,7 +314,7 @@ export class Game {
     const b = this.ball.position; this.sinceKick += dt;
     for (let n = Math.max(1, Math.ceil(dt / 0.004)), h = dt / n, i = 0; i < n; i++) this.stepBall(h);
     if (this.live && this.bv.lengthSq() > 60 && Math.random() < 0.7) this.fx.emit(b.clone(), 0xffe9a8, 1, 0.3, 0.4, 0.28, 0);
-    if (this.live && this.kState !== 'hold' && this.sinceKick > 0.6 && b.y <= BALL_R + 0.01 && Math.hypot(this.bv.x, this.bv.z) < 1.2) this.end(this.type === 'pass' && !this.byMate ? 'PAS ULAŞMADI' : 'KAÇTI');
+    if (this.live && this.kState !== 'hold' && this.sinceKick > 0.6 && b.y <= BALL_R + 0.01 && Math.hypot(this.bv.x, this.bv.z) < 1.2) this.end(this.feed() && !this.byMate ? (this.type === 'cross' ? 'ORTA ULAŞMADI' : 'PAS ULAŞMADI') : 'KAÇTI');
     if (this.live && this.sinceKick > 6) this.end('KAÇTI');
   }
   private spin(dx: number, dz: number) { const d = Math.hypot(dx, dz); if (d > 1e-5) this.ball.rotateOnWorldAxis(new THREE.Vector3(dz / d, 0, -dx / d), d / BALL_R); }
@@ -319,7 +347,7 @@ export class Game {
       const dx = b.x - o.x, dz = b.z - o.z, d = Math.hypot(dx, dz);
       if (d < 0.42 + BALL_R && b.y < top && d > 1e-3) {
         const nx = dx / d, nz = dz / d, vn = v.x * nx + v.z * nz; if (vn < 0) { v.x -= 1.4 * vn * nx; v.z -= 1.4 * vn * nz; v.multiplyScalar(0.5); v.y = Math.abs(v.y) * 0.4 + 2; }
-        this.curveT = 0; this.sfx.glove(); this.fx.emit(b.clone(), 0xffffff, 10, 3, 0.8, 0.4); this.end(o.wall ? 'BARAJ!' : this.type === 'pass' && !this.byMate ? 'PAS KESİLDİ' : 'BLOK!');
+        this.curveT = 0; this.sfx.glove(); this.fx.emit(b.clone(), 0xffffff, 10, 3, 0.8, 0.4); this.end(o.wall ? 'BARAJ!' : this.feed() && !this.byMate ? (this.type === 'cross' ? 'ORTA KESİLDİ' : 'PAS KESİLDİ') : 'BLOK!');
       }
     }
     this.keeperTouch();
@@ -369,7 +397,8 @@ export class Game {
     const k = this.keeper, p = this.plan; this.kT += dt;
     let target: Pose;
     if (this.kState === 'set') {
-      const tx = clamp(this.ball.position.x * 0.14, -1.6, 1.6), step = 3 * dt; this.kx += clamp(tx - this.kx, -step, step);
+      const rush = this.type === 'oneone' && this.mode !== 'intro', tx = clamp(this.ball.position.x * (rush ? 0.5 : this.type === 'cross' ? 0.1 : 0.14), -2.4, 2.4), step = 3 * dt; this.kx += clamp(tx - this.kx, -step, step);
+      if (rush && this.mode === 'aim') this.kz = Math.min(GZ + 7.5, this.kz + (1.7 + this.level * 0.1) * dt);
       const tense = this.mode === 'contact' || (this.mode === 'aim' && this.aiming);
       target = jockeyPose(this.clock * 0.5); target.saL = target.saR = tense ? 1.25 : 1.0; target.pitch = tense ? 0.38 : 0.25;
     } else if (this.kState === 'dive' && p) {
@@ -396,6 +425,7 @@ export class Game {
     // nişan alırken topun arkasında, okun ve kalenin görüneceği yükseklikte
     const tp = new THREE.Vector3(s.x - f.x * 8.2, 5.2, s.z - f.y * 8.2), tl = new THREE.Vector3(s.x + f.x * 9, 0.6, s.z + f.y * 9);
     let rate = 5;
+    if (this.type === 'cross' && this.mode !== 'fly' && this.mode !== 'result') { tp.set(s.x * 0.9, 13, s.z + 13); tl.set(s.x * 0.4, 0, s.z - 5); }
     if (this.type === 'pass' && (this.mode === 'aim' || this.mode === 'intro' || this.mode === 'contact')) { tp.set(s.x * 0.85 + this.mx * 0.15, 13, s.z + 11); tl.set(s.x * 0.65 + this.mx * 0.35, 0, s.z - 8); }
     if (this.mode === 'contact') { tp.y -= 0.8; rate = 8; }
     if (this.mode === 'fly' || this.mode === 'result') {
