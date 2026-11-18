@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Game, Stats } from './game';
 import { Sfx } from './audio';
 import { Look } from './character';
-import { KITS, BOOTS, BALLS, HAIRS, HAIR_COLORS, SKINS, NUMBERS, DEFAULT_LOADOUT, Loadout, pickRivalKit } from './cosmetics';
+import { KITS, BOOTS, BALLS, HAIRS, HAIR_COLORS, SKINS, NUMBERS, DEFAULT_LOADOUT, Loadout } from './cosmetics';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const KEY = 'dribbler.v1';
@@ -12,7 +12,7 @@ try { const raw = localStorage.getItem(KEY); if (raw) { const s = JSON.parse(raw
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* kaydedilemezse oyun yine çalışır */ } };
 
 const lookOf = (l: Loadout): Look => ({ kit: KITS[l.kit], number: l.number, boot: BOOTS[l.boots], hair: l.hair, hairColor: HAIR_COLORS[l.hairColor], skin: SKINS[l.skin] });
-const rivalOf = (l: Loadout): Look => ({ kit: pickRivalKit(KITS[l.kit]), number: 4, boot: { color: '#22222c', sole: '#eeeeee' }, hair: 0, hairColor: '#1a1412', skin: '#c98e62' });
+const keeperLook: Look = { kit: { name: 'gk', a: '#c6ff3a', b: '#1b1b2a', pattern: 'chest', shorts: '#1b1b2a', socks: '#c6ff3a', num: '#1b1b2a' }, number: 1, boot: { color: '#22222c', sole: '#eeeeee' }, hair: 0, hairColor: '#1a1412', skin: '#c98e62' };
 
 const app = $('app'), canvas = $<HTMLCanvasElement>('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -23,27 +23,24 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 0.56, 0.1, 400);
 const sfx = new Sfx(); sfx.enabled = save.sound;
 
-const hud = $('hud'), menu = $('menu'), over = $('over'), how = $('how'), pops = $('pops');
-let lastScore = -1, lastLives = -1;
+const hud = $('hud'), menu = $('menu'), how = $('how'), pops = $('pops'), shootBtn = $('shoot'), stick = $('stick'), knob = $('knob');
 const game = new Game(scene, camera, sfx, {
   popup(text, kind) {
     const el = document.createElement('div'); el.className = 'pop ' + kind; el.textContent = text;
-    pops.appendChild(el); while (pops.children.length > 3) pops.firstElementChild!.remove();
+    pops.appendChild(el); while (pops.children.length > 4) pops.firstElementChild!.remove();
     el.addEventListener('animationend', () => el.remove());
   },
-  hud(score, lives, time) {
-    if (score !== lastScore) { $('score').textContent = String(score); lastScore = score; }
-    if (lives !== lastLives) { $('lives').querySelectorAll('i').forEach((el, i) => el.classList.toggle('off', i >= lives)); lastLives = lives; }
-    const bar = $('timebar'); bar.style.transform = `scaleX(${Math.max(0, time)})`; bar.classList.toggle('low', time < 0.3);
+  hud(s: Stats) {
+    $('goals').textContent = String(s.goals); $('shots').textContent = '/ ' + s.shots;
+    const st = $('streak'); st.textContent = 'Seri ' + s.streak; st.classList.toggle('hot', s.streak >= 2);
+    if (s.bestStreak > save.best) { save.best = s.bestStreak; persist(); }
   },
-  over(s: Stats) {
-    const isBest = s.score > save.best; if (isBest) { save.best = s.score; persist(); }
-    $('oScore').textContent = String(s.score); $('oBest').textContent = isBest ? 'Yeni rekor!' : 'En iyi: ' + save.best;
-    $('oGoals').textContent = String(s.goals); $('oDrib').textContent = String(s.dribbles); $('oLong').textContent = s.longest ? s.longest + ' m' : '-';
-    hud.hidden = true; stick.hidden = true; over.hidden = false;
+  power(p, charging) {
+    shootBtn.style.setProperty('--p', String(Math.min(1, p))); shootBtn.classList.toggle('charging', charging); shootBtn.classList.toggle('over', charging && p > 1);
+    $('pct').textContent = charging ? Math.round(Math.min(p, 1.25) * 100) + '%' : 'ŞUT';
   },
 }, lookOf(save.loadout));
-const applyLook = () => { game.setPlayerLook(lookOf(save.loadout)); game.setRivalLook(rivalOf(save.loadout)); game.setBall(BALLS[save.loadout.ball]); };
+const applyLook = () => { game.setPlayerLook(lookOf(save.loadout)); game.setKeeperLook(keeperLook); game.setBall(BALLS[save.loadout.ball]); };
 applyLook();
 (document as any).fonts?.ready?.then(applyLook);
 
@@ -54,14 +51,14 @@ function resize() {
 new ResizeObserver(resize).observe(app); resize();
 
 // ---------- ekranlar ----------
-function showMenu() { game.toMenu(); camera.updateProjectionMatrix(); menu.hidden = false; over.hidden = true; hud.hidden = true; how.hidden = true; $('best').textContent = 'En iyi skor: ' + save.best; }
+function showMenu() { game.toMenu(); menu.hidden = false; hud.hidden = true; shootBtn.hidden = true; stick.hidden = true; how.hidden = true; $('best').textContent = 'En uzun gol serisi: ' + save.best; }
 function play() {
   sfx.unlock();
-  if (!save.seenHow) { save.seenHow = true; persist(); menu.hidden = true; over.hidden = true; how.hidden = false; how.dataset.then = 'play'; return; }
-  menu.hidden = true; over.hidden = true; how.hidden = true; hud.hidden = false; pops.innerHTML = ''; lastScore = lastLives = -1;
+  if (!save.seenHow) { save.seenHow = true; persist(); menu.hidden = true; how.hidden = false; how.dataset.then = 'play'; return; }
+  menu.hidden = true; how.hidden = true; hud.hidden = false; shootBtn.hidden = false; pops.innerHTML = '';
   game.start();
 }
-$('play').onclick = play; $('again').onclick = play; $('toMenu').onclick = () => { sfx.click(); showMenu(); };
+$('play').onclick = play; $('toMenu').onclick = () => { sfx.click(); showMenu(); };
 $('bHow').onclick = () => { sfx.unlock(); sfx.click(); menu.hidden = true; how.hidden = false; how.dataset.then = 'menu'; };
 $('howOk').onclick = () => { if (how.dataset.then === 'play') play(); else showMenu(); };
 const tSound = $('tSound');
@@ -104,42 +101,47 @@ document.querySelectorAll<HTMLElement>('#tabs button').forEach(b => b.onclick = 
 renderOpts();
 
 // ---------- kontroller ----------
-// Parmağı basılı tutup sürükle: hareket. Kısa ve hızlı yukarı fiske: şut.
-const stick = $('stick'), knob = $('knob'), R = 54;
-interface Touch { x0: number; y0: number; t0: number; x: number; y: number }
-const touches = new Map<number, Touch>(); let stickId = -1;
+// Sol başparmak: ekranda herhangi bir yere basıp sürükle = koş.
+// Sağ başparmak: ŞUT tuşuna basılı tut = güç dolar; parmağı kaydır = nişan; bırak = vur.
+const R = 54; let stickId = -1, sx0 = 0, sy0 = 0;
 canvas.addEventListener('pointerdown', e => {
-  sfx.unlock(); if (game.mode === 'menu' || game.mode === 'over') return;
-  touches.set(e.pointerId, { x0: e.clientX, y0: e.clientY, t0: performance.now(), x: e.clientX, y: e.clientY });
-  if (stickId < 0) { stickId = e.pointerId; const r = app.getBoundingClientRect(); stick.style.left = e.clientX - r.left + 'px'; stick.style.top = e.clientY - r.top + 'px'; knob.style.transform = ''; stick.hidden = false; }
+  sfx.unlock(); if (game.mode !== 'play' || stickId >= 0) return;
+  stickId = e.pointerId; sx0 = e.clientX; sy0 = e.clientY;
+  const r = app.getBoundingClientRect(); stick.style.left = sx0 - r.left + 'px'; stick.style.top = sy0 - r.top + 'px'; knob.style.transform = ''; stick.hidden = false;
+});
+let shootId = -1, bx0 = 0, by0 = 0;
+shootBtn.addEventListener('pointerdown', e => {
+  e.preventDefault(); sfx.unlock(); if (shootId >= 0) return;
+  if (game.chargeStart()) { shootId = e.pointerId; bx0 = e.clientX; by0 = e.clientY; try { shootBtn.setPointerCapture(e.pointerId); } catch { /* yakalanamazsa pencere olayları yeter */ } }
 });
 window.addEventListener('pointermove', e => {
-  const t = touches.get(e.pointerId); if (!t) return; t.x = e.clientX; t.y = e.clientY;
+  if (e.pointerId === shootId) { game.chargeAim(e.clientX - bx0, e.clientY - by0); return; }
   if (e.pointerId !== stickId) return;
-  let dx = (t.x - t.x0) / R, dy = (t.y - t.y0) / R; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
-  knob.style.transform = `translate(${dx * R}px,${dy * R}px)`; game.setStick(m < 0.15 ? 0 : dx, m < 0.15 ? 0 : dy);
+  let dx = (e.clientX - sx0) / R, dy = (e.clientY - sy0) / R; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
+  knob.style.transform = `translate(${dx * R}px,${dy * R}px)`; game.setStick(m < 0.12 ? 0 : dx, m < 0.12 ? 0 : dy);
 });
 const end = (e: PointerEvent) => {
-  const t = touches.get(e.pointerId); if (!t) return; touches.delete(e.pointerId);
-  const dx = t.x - t.x0, dy = t.y - t.y0, dist = Math.hypot(dx, dy), dur = Math.max(16, performance.now() - t.t0);
-  if (dur < 300 && dist > 38 && -dy > dist * 0.35) game.shoot(Math.atan2(dx, -dy), (dist / dur - 0.35) / 1.5, (dist / app.clientHeight - 0.07) / 0.3);
+  if (e.pointerId === shootId) { shootId = -1; game.chargeRelease(); }
   if (e.pointerId === stickId) { stickId = -1; stick.hidden = true; game.setStick(0, 0); }
 };
 window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
-const held = new Set<string>();
-const keyStick = () => game.setStick((held.has('ArrowRight') || held.has('d') ? 1 : 0) - (held.has('ArrowLeft') || held.has('a') ? 1 : 0), (held.has('ArrowDown') || held.has('s') ? 1 : 0) - (held.has('ArrowUp') || held.has('w') ? 1 : 0));
+// klavye: WASD koş, boşluk basılı tut = şut, ok tuşları = nişan
+const held = new Set<string>(); let kax = 0, kay = 0;
+const keyStick = () => game.setStick((held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), (held.has('s') ? 1 : 0) - (held.has('w') ? 1 : 0));
 window.addEventListener('keydown', e => {
-  if (game.mode === 'play' || game.mode === 'shot' || game.mode === 'result') {
-    if (e.key === ' ') { e.preventDefault(); const g = game as any; game.shoot(Math.atan2((held.has('q') ? -2.6 : held.has('e') ? 2.6 : 0) - g.px, g.pz + 30), 0.75, 0.3); }
-    else { held.add(e.key); keyStick(); if (e.key.startsWith('Arrow')) e.preventDefault(); }
-  } else if ((e.key === 'Enter' || e.key === ' ') && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); if (!how.hidden) $('howOk').click(); else play(); }
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (game.mode === 'play') {
+    if (k === ' ') { e.preventDefault(); if (!e.repeat) { kax = kay = 0; game.chargeStart(); } }
+    else { held.add(k); keyStick(); if (k.startsWith('Arrow')) e.preventDefault(); }
+  } else if ((k === 'Enter' || k === ' ') && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); if (!how.hidden) $('howOk').click(); else play(); }
 });
-window.addEventListener('keyup', e => { held.delete(e.key); keyStick(); });
+window.addEventListener('keyup', e => { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; if (k === ' ') game.chargeRelease(); held.delete(k); keyStick(); });
 
 showMenu();
 let last = performance.now();
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (held.size) { kax += ((held.has('ArrowRight') ? 1 : 0) - (held.has('ArrowLeft') ? 1 : 0)) * dt * 110; kay += ((held.has('ArrowDown') ? 1 : 0) - (held.has('ArrowUp') ? 1 : 0)) * dt * 110; game.chargeAim(kax, kay); }
   game.update(dt); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

@@ -59,5 +59,18 @@ export class Sfx {
   kick(power: number) { this.tone(120, 0.12, 'sine', 0.5, 0, 50); this.noise(0.1, 0.3 + power * 0.3, 1200, 300, 0.8); }
   post() { this.tone(880, 0.5, 'triangle', 0.3); this.tone(1320, 0.35, 'sine', 0.2); }
   goal() { this.noise(2.6, 0.75, 500, 1500, 0.35); this.noise(2.2, 0.4, 900, 2200, 0.5, 0.1); [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.4, 'triangle', 0.22, 0.1 + i * 0.09)); }
+  private chargeOsc: OscillatorNode | null = null; private chargeGain: GainNode | null = null;
+  /** Güç dolarken yükselen ton */
+  charge(p: number) {
+    const c = this.ctx; if (!c) return;
+    if (!this.chargeOsc) { const o = this.chargeOsc = c.createOscillator(), g = this.chargeGain = c.createGain(); o.type = 'sawtooth'; g.gain.value = 0.0001; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; o.connect(f).connect(g).connect(this.master); o.start(); }
+    this.chargeOsc.frequency.setTargetAtTime(90 + 260 * Math.min(p, 1) + (p > 1 ? 400 * (p - 1) + 30 * Math.sin(c.currentTime * 60) : 0), c.currentTime, 0.03);
+    this.chargeGain!.gain.setTargetAtTime(0.05 + 0.06 * Math.min(p, 1.2), c.currentTime, 0.03);
+  }
+  chargeStop() { if (this.ctx && this.chargeGain) this.chargeGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.02); }
+  strike(power: number) { this.tone(95, 0.2, 'sine', 0.7, 0, 38); this.tone(190, 0.07, 'square', 0.12 + 0.1 * power, 0, 70); this.noise(0.13, 0.35 + power * 0.4, 2200, 250, 0.7); }
+  netSwish() { this.noise(0.5, 0.45, 3200, 700, 0.6); }
+  glove() { this.tone(140, 0.1, 'sine', 0.4, 0, 70); this.noise(0.08, 0.3, 700, 300, 1); }
+  bounce(v: number) { this.tone(110, 0.08, 'sine', Math.min(0.3, 0.05 + v * 0.03), 0, 60); }
   click() { this.tone(660, 0.05, 'triangle', 0.15); }
 }
